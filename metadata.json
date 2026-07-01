@@ -1,0 +1,6 @@
+{
+  "name": "Rejeki Macan",
+  "description": "Mediator & Broker Matchmaking Platform",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
