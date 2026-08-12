@@ -1,12 +1,13 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { 
   Building2, PlusCircle, User, ShieldCheck, CheckCircle2, Send, 
   Trash2, RefreshCw, Layers, MapPin, Tag, AlertCircle, Sparkles,
   Upload, X, Link as LinkIcon, Image as ImageIcon, Wallet, Clock,
-  Calendar, Coins, XCircle, Plus, Info, AlertTriangle, ShieldAlert
+  Calendar, Coins, XCircle, Plus, Info, AlertTriangle, ShieldAlert,
+  QrCode, Building, CreditCard, Copy, Check, FileCheck, ArrowRight, History
 } from "lucide-react";
-import { UserSession } from "../types";
-import { apiTopUpDeposit, apiExtendProject } from "../services/api";
+import { UserSession, DepositRequest, PaymentMethod } from "../types";
+import { apiTopUpDeposit, apiExtendProject, apiSubmitDeposit, apiGetDeposits } from "../services/api";
 
 interface DashboardMemberProps {
   currentUser: UserSession;
@@ -44,10 +45,35 @@ export default function DashboardMember({
   const [imageUrl, setImageUrl] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // State Deposit Top Up Modal
+  // State Deposit Top Up Modal & Payment Flow
   const [showTopUpModal, setShowTopUpModal] = useState<boolean>(false);
+  const [topUpStep, setTopUpStep] = useState<1 | 2 | 3>(1); // 1: Nominal & Method, 2: Instructions & Confirm, 3: History/Status
   const [topUpAmount, setTopUpAmount] = useState<number>(50000);
+  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<PaymentMethod>("QRIS");
+  const [senderName, setSenderName] = useState<string>(currentUser.fullName || "");
+  const [proofUrl, setProofUrl] = useState<string>("");
+  const [proofNotes, setProofNotes] = useState<string>("");
+  const [myDeposits, setMyDeposits] = useState<DepositRequest[]>([]);
   const [isTopUpLoading, setIsTopUpLoading] = useState<boolean>(false);
+  const [copiedCode, setCopiedCode] = useState<boolean>(false);
+
+  // Load My Deposits History
+  const loadMyDeposits = async () => {
+    try {
+      const res = await apiGetDeposits(currentUser.id);
+      if (res.success && res.deposits) {
+        setMyDeposits(res.deposits);
+      }
+    } catch (err) {
+      console.error("Gagal mengambil riwayat deposit:", err);
+    }
+  };
+
+  useEffect(() => {
+    if (showTopUpModal) {
+      loadMyDeposits();
+    }
+  }, [showTopUpModal]);
 
   // State Perpanjang Posting Modal
   const [extendingProject, setExtendingProject] = useState<any | null>(null);
@@ -162,23 +188,49 @@ export default function DashboardMember({
     }
   };
 
-  // Top Up Deposit Submit
+  // Proof Image Upload Handler
+  const handleProofFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 10 * 1024 * 1024) {
+      alert("Ukuran bukti transfer maksimal 10MB");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      setProofUrl(event.target?.result as string);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // Top Up Deposit Submit (Send confirmation request to Admin)
   const handleTopUpSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (topUpAmount <= 0) {
       alert("Jumlah deposit harus lebih dari 0.");
       return;
     }
+
     setIsTopUpLoading(true);
-    const res = await apiTopUpDeposit(currentUser.id, topUpAmount);
+    const res = await apiSubmitDeposit({
+      userId: currentUser.id,
+      amount: topUpAmount,
+      paymentMethod: selectedPaymentMethod,
+      senderName: senderName || currentUser.fullName,
+      proofUrl,
+      notes: proofNotes || `Top up via ${selectedPaymentMethod}`
+    });
     setIsTopUpLoading(false);
-    if (res.success && res.user) {
+
+    if (res.success) {
       alert(res.message);
-      if (onUpdateUserSession) onUpdateUserSession(res.user);
-      setShowTopUpModal(false);
+      await loadMyDeposits();
+      setTopUpStep(3); // Switch to status history view
       onRefreshData();
     } else {
-      alert(res.message || "Gagal melakukan top up deposit.");
+      alert(res.message || "Gagal melakukan konfirmasi top up deposit.");
     }
   };
 
@@ -805,84 +857,528 @@ export default function DashboardMember({
         </div>
       )}
 
-      {/* MODAL: TOP UP DEPOSIT SALDO */}
+      {/* MODAL: TOP UP DEPOSIT SALDO & SISTEM PEMBAYARAN */}
       {showTopUpModal && (
         <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl border border-slate-200 p-6 space-y-5 animate-in fade-in zoom-in-95 duration-150">
+          <div className="bg-white w-full max-w-lg rounded-3xl shadow-2xl border border-slate-200 p-6 space-y-5 animate-in fade-in zoom-in-95 duration-150 max-h-[90vh] overflow-y-auto">
+            {/* Modal Header */}
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div className="flex items-center gap-2">
                 <div className="p-2 bg-amber-500/20 text-amber-700 rounded-xl">
                   <Coins size={20} />
                 </div>
-                <h3 className="font-black text-slate-900 text-base">Top Up Saldo Deposit Iklan</h3>
+                <div>
+                  <h3 className="font-black text-slate-900 text-base">Top Up Saldo Deposit Iklan</h3>
+                  <p className="text-[11px] text-slate-500">Pilihan pembayaran QRIS, Virtual Account & Transfer Bank</p>
+                </div>
               </div>
               <button
-                onClick={() => setShowTopUpModal(false)}
+                onClick={() => {
+                  setShowTopUpModal(false);
+                  setTopUpStep(1);
+                }}
                 className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full cursor-pointer"
               >
                 <X size={18} />
               </button>
             </div>
 
-            <form onSubmit={handleTopUpSubmit} className="space-y-4 text-xs">
-              <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl space-y-1">
-                <p className="font-bold text-amber-900">Aturan Biaya Perpanjangan Iklan:</p>
-                <p className="text-amber-800 text-[11px] leading-relaxed">
-                  Postingan yang disetujui tayang <strong>Gratis 10 Hari Pertama</strong>. Setelah lewat 10 hari, biaya perpanjangan iklan hanya <strong>Rp 500 / hari</strong> yang dipotong dari saldo deposit ini.
-                </p>
-              </div>
+            {/* Step Navigation Tabs */}
+            <div className="grid grid-cols-3 gap-2 p-1 bg-slate-100 rounded-2xl text-xs font-bold text-center">
+              <button
+                onClick={() => setTopUpStep(1)}
+                className={`py-2 rounded-xl transition-all cursor-pointer ${
+                  topUpStep === 1 ? "bg-slate-900 text-amber-400 shadow-xs font-black" : "text-slate-600 hover:text-slate-900"
+                }`}
+              >
+                1. Pilih Nominal
+              </button>
+              <button
+                onClick={() => setTopUpStep(2)}
+                className={`py-2 rounded-xl transition-all cursor-pointer ${
+                  topUpStep === 2 ? "bg-slate-900 text-amber-400 shadow-xs font-black" : "text-slate-600 hover:text-slate-900"
+                }`}
+              >
+                2. Bayar & Konfirmasi
+              </button>
+              <button
+                onClick={() => {
+                  setTopUpStep(3);
+                  loadMyDeposits();
+                }}
+                className={`py-2 rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1 ${
+                  topUpStep === 3 ? "bg-slate-900 text-amber-400 shadow-xs font-black" : "text-slate-600 hover:text-slate-900"
+                }`}
+              >
+                <History size={13} />
+                <span>Status ({myDeposits.length})</span>
+              </button>
+            </div>
 
-              <div className="space-y-2">
-                <label className="font-bold text-slate-800 block">Pilih Nominal Top Up Cepat:</label>
-                <div className="grid grid-cols-2 gap-2">
-                  {[10000, 25000, 50000, 100000].map((amt) => (
-                    <button
-                      key={amt}
-                      type="button"
-                      onClick={() => setTopUpAmount(amt)}
-                      className={`p-2.5 rounded-xl border font-bold text-xs font-mono transition-all cursor-pointer ${
-                        topUpAmount === amt
-                          ? "bg-slate-900 text-amber-400 border-slate-900 shadow-sm"
-                          : "bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100"
+            {/* STEP 1: PILIH NOMINAL & METODE PEMBAYARAN */}
+            {topUpStep === 1 && (
+              <div className="space-y-4 text-xs">
+                <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl space-y-1">
+                  <p className="font-bold text-amber-900">Ketentuan Deposit Iklan:</p>
+                  <p className="text-amber-800 text-[11px] leading-relaxed">
+                    Setiap postingan proyek mendapatkan <strong>Gratis 10 Hari Pertama</strong>. Setelah 10 hari, biaya perpanjangan tayang hanya <strong>Rp 500 / hari</strong> yang akan dipotong langsung dari saldo ini.
+                  </p>
+                </div>
+
+                {/* Pilih Nominal Top Up Cepat */}
+                <div className="space-y-2">
+                  <label className="font-bold text-slate-800 block">Pilih Nominal Top Up Deposit:</label>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    {[10000, 25000, 50000, 100000, 250000, 500000].map((amt) => (
+                      <button
+                        key={amt}
+                        type="button"
+                        onClick={() => setTopUpAmount(amt)}
+                        className={`p-2.5 rounded-xl border font-bold text-xs font-mono transition-all cursor-pointer ${
+                          topUpAmount === amt
+                            ? "bg-slate-900 text-amber-400 border-slate-900 shadow-sm font-black"
+                            : "bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100"
+                        }`}
+                      >
+                        Rp {amt.toLocaleString("id-ID")}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Input Custom Nominal */}
+                <div className="space-y-1">
+                  <label className="font-bold text-slate-800 block">Atau Input Nominal Bebas (Rp):</label>
+                  <input
+                    type="number"
+                    min="10000"
+                    step="5000"
+                    value={topUpAmount}
+                    onChange={(e) => setTopUpAmount(Number(e.target.value))}
+                    className="w-full p-3 bg-slate-50 border border-slate-300 rounded-xl font-mono font-bold text-slate-900 text-sm focus:outline-none focus:border-amber-500"
+                    required
+                  />
+                </div>
+
+                {/* Pilih Sistem Pembayaran */}
+                <div className="space-y-2 pt-2">
+                  <label className="font-bold text-slate-800 block">Pilih Metode Pembayaran:</label>
+                  <div className="space-y-2">
+                    {/* QRIS */}
+                    <div
+                      onClick={() => setSelectedPaymentMethod("QRIS")}
+                      className={`p-3 rounded-2xl border cursor-pointer transition-all flex items-center justify-between ${
+                        selectedPaymentMethod === "QRIS"
+                          ? "bg-amber-500/10 border-amber-500 ring-2 ring-amber-500/20"
+                          : "bg-slate-50 border-slate-200 hover:border-slate-300"
                       }`}
                     >
-                      Rp {amt.toLocaleString("id-ID")}
-                    </button>
-                  ))}
+                      <div className="flex items-center gap-3">
+                        <div className="p-2 bg-slate-900 text-amber-400 rounded-xl">
+                          <QrCode size={20} />
+                        </div>
+                        <div>
+                          <p className="font-black text-slate-900">QRIS Instant Scan All Payment</p>
+                          <p className="text-[10.5px] text-slate-500">BCA, Mandiri, BRI, GoPay, OVO, Dana, ShopeePay</p>
+                        </div>
+                      </div>
+                      <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${
+                        selectedPaymentMethod === "QRIS" ? "border-amber-600 bg-amber-500" : "border-slate-300"
+                      }`}>
+                        {selectedPaymentMethod === "QRIS" && <div className="w-1.5 h-1.5 bg-slate-950 rounded-full"></div>}
+                      </div>
+                    </div>
+
+                    {/* VA BCA */}
+                    <div
+                      onClick={() => setSelectedPaymentMethod("VA_BCA")}
+                      className={`p-3 rounded-2xl border cursor-pointer transition-all flex items-center justify-between ${
+                        selectedPaymentMethod === "VA_BCA"
+                          ? "bg-amber-500/10 border-amber-500 ring-2 ring-amber-500/20"
+                          : "bg-slate-50 border-slate-200 hover:border-slate-300"
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="p-2 bg-blue-900 text-white font-black text-[11px] rounded-xl font-mono">
+                          BCA
+                        </div>
+                        <div>
+                          <p className="font-black text-slate-900">Virtual Account BCA</p>
+                          <p className="text-[10.5px] text-slate-500">Konfirmasi otomatis dengan kode VA khusus</p>
+                        </div>
+                      </div>
+                      <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${
+                        selectedPaymentMethod === "VA_BCA" ? "border-amber-600 bg-amber-500" : "border-slate-300"
+                      }`}>
+                        {selectedPaymentMethod === "VA_BCA" && <div className="w-1.5 h-1.5 bg-slate-950 rounded-full"></div>}
+                      </div>
+                    </div>
+
+                    {/* VA Mandiri */}
+                    <div
+                      onClick={() => setSelectedPaymentMethod("VA_MANDIRI")}
+                      className={`p-3 rounded-2xl border cursor-pointer transition-all flex items-center justify-between ${
+                        selectedPaymentMethod === "VA_MANDIRI"
+                          ? "bg-amber-500/10 border-amber-500 ring-2 ring-amber-500/20"
+                          : "bg-slate-50 border-slate-200 hover:border-slate-300"
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="p-2 bg-amber-700 text-white font-black text-[10px] rounded-xl font-mono">
+                          MANDIRI
+                        </div>
+                        <div>
+                          <p className="font-black text-slate-900">Virtual Account Mandiri</p>
+                          <p className="text-[10.5px] text-slate-500">Transfer via Mandiri Livin' atau ATM Mandiri</p>
+                        </div>
+                      </div>
+                      <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${
+                        selectedPaymentMethod === "VA_MANDIRI" ? "border-amber-600 bg-amber-500" : "border-slate-300"
+                      }`}>
+                        {selectedPaymentMethod === "VA_MANDIRI" && <div className="w-1.5 h-1.5 bg-slate-950 rounded-full"></div>}
+                      </div>
+                    </div>
+
+                    {/* VA BRI */}
+                    <div
+                      onClick={() => setSelectedPaymentMethod("VA_BRI")}
+                      className={`p-3 rounded-2xl border cursor-pointer transition-all flex items-center justify-between ${
+                        selectedPaymentMethod === "VA_BRI"
+                          ? "bg-amber-500/10 border-amber-500 ring-2 ring-amber-500/20"
+                          : "bg-slate-50 border-slate-200 hover:border-slate-300"
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="p-2 bg-blue-700 text-white font-black text-[11px] rounded-xl font-mono">
+                          BRI
+                        </div>
+                        <div>
+                          <p className="font-black text-slate-900">Virtual Account BRI (BRIVA)</p>
+                          <p className="text-[10.5px] text-slate-500">Transfer via BRImo atau ATM BRI</p>
+                        </div>
+                      </div>
+                      <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${
+                        selectedPaymentMethod === "VA_BRI" ? "border-amber-600 bg-amber-500" : "border-slate-300"
+                      }`}>
+                        {selectedPaymentMethod === "VA_BRI" && <div className="w-1.5 h-1.5 bg-slate-950 rounded-full"></div>}
+                      </div>
+                    </div>
+
+                    {/* Direct Bank Transfer */}
+                    <div
+                      onClick={() => setSelectedPaymentMethod("BANK_TRANSFER")}
+                      className={`p-3 rounded-2xl border cursor-pointer transition-all flex items-center justify-between ${
+                        selectedPaymentMethod === "BANK_TRANSFER"
+                          ? "bg-amber-500/10 border-amber-500 ring-2 ring-amber-500/20"
+                          : "bg-slate-50 border-slate-200 hover:border-slate-300"
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="p-2 bg-emerald-800 text-white rounded-xl">
+                          <Building size={18} />
+                        </div>
+                        <div>
+                          <p className="font-black text-slate-900">Transfer Bank Langsung (BCA)</p>
+                          <p className="text-[10.5px] text-slate-500">Transfer ke Rekening Bank REJEKI MACAN PLATFORM</p>
+                        </div>
+                      </div>
+                      <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${
+                        selectedPaymentMethod === "BANK_TRANSFER" ? "border-amber-600 bg-amber-500" : "border-slate-300"
+                      }`}>
+                        {selectedPaymentMethod === "BANK_TRANSFER" && <div className="w-1.5 h-1.5 bg-slate-950 rounded-full"></div>}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="pt-3 flex items-center justify-between">
+                  <span className="font-mono text-slate-600">
+                    Total: <strong className="text-slate-900 text-sm">Rp {topUpAmount.toLocaleString("id-ID")}</strong>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setTopUpStep(2)}
+                    className="px-5 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black rounded-xl shadow-md cursor-pointer flex items-center gap-2"
+                  >
+                    <span>Lanjut Ke Instruksi Pembayaran</span>
+                    <ArrowRight size={14} />
+                  </button>
                 </div>
               </div>
+            )}
 
-              <div className="space-y-1">
-                <label className="font-bold text-slate-800 block">Atau Input Nominal Lain (Rp):</label>
-                <input
-                  type="number"
-                  min="500"
-                  step="500"
-                  value={topUpAmount}
-                  onChange={(e) => setTopUpAmount(Number(e.target.value))}
-                  className="w-full p-3 bg-slate-50 border border-slate-300 rounded-xl font-mono font-bold text-slate-900 text-sm focus:outline-none focus:border-amber-500"
-                  required
-                />
-              </div>
+            {/* STEP 2: INSTRUKSI PEMBAYARAN & KONFIRMASI KE ADMIN */}
+            {topUpStep === 2 && (
+              <form onSubmit={handleTopUpSubmit} className="space-y-4 text-xs">
+                {/* Visual Header Payment Instructions */}
+                <div className="p-4 bg-slate-900 text-white rounded-2xl border border-slate-800 space-y-3">
+                  <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                    <span className="text-[11px] text-slate-400 uppercase tracking-wider font-bold">Instruksi Pembayaran</span>
+                    <span className="px-2 py-0.5 bg-amber-500/20 text-amber-400 text-[10px] font-mono rounded font-bold">
+                      {selectedPaymentMethod}
+                    </span>
+                  </div>
 
-              <div className="pt-2 flex items-center justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setShowTopUpModal(false)}
-                  className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl cursor-pointer"
-                >
-                  Batal
-                </button>
-                <button
-                  type="submit"
-                  disabled={isTopUpLoading}
-                  className="px-5 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black rounded-xl shadow-md cursor-pointer flex items-center gap-2"
-                >
-                  {isTopUpLoading ? <RefreshCw size={14} className="animate-spin" /> : <Coins size={14} />}
-                  <span>Konfirmasi Top Up</span>
-                </button>
+                  {/* Payment Info Render */}
+                  {selectedPaymentMethod === "QRIS" && (
+                    <div className="flex flex-col items-center justify-center space-y-2 py-2 text-center">
+                      <div className="p-3 bg-white rounded-2xl shadow-lg border border-slate-200 inline-block">
+                        <img
+                          src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=REJEKI_MACAN_DEPOSIT_${topUpAmount}_${currentUser.phoneNumber}`}
+                          alt="QRIS Rejeki Macan"
+                          className="w-40 h-40 object-contain"
+                        />
+                      </div>
+                      <p className="text-[11px] text-slate-300 font-bold">
+                        Scan QRIS di atas menggunakan M-Banking / GoPay / OVO / Dana / ShopeePay
+                      </p>
+                    </div>
+                  )}
+
+                  {selectedPaymentMethod === "VA_BCA" && (
+                    <div className="space-y-1">
+                      <span className="text-[10px] text-slate-400 font-bold">Nomor Virtual Account BCA:</span>
+                      <div className="p-3 bg-slate-950 rounded-xl border border-slate-800 flex items-center justify-between font-mono">
+                        <span className="text-base font-black text-amber-400 tracking-wider">
+                          880010{currentUser.phoneNumber || "08123456789"}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            navigator.clipboard.writeText(`880010${currentUser.phoneNumber || "08123456789"}`);
+                            setCopiedCode(true);
+                            setTimeout(() => setCopiedCode(false), 2000);
+                          }}
+                          className="px-2.5 py-1 bg-amber-500 text-slate-950 font-bold rounded text-[10.5px] cursor-pointer flex items-center gap-1"
+                        >
+                          {copiedCode ? <Check size={12} /> : <Copy size={12} />}
+                          <span>{copiedCode ? "Tersalin" : "Salin VA"}</span>
+                        </button>
+                      </div>
+                      <p className="text-[10.5px] text-slate-400">Atas Nama: REJEKI MACAN PLATFORM</p>
+                    </div>
+                  )}
+
+                  {selectedPaymentMethod === "VA_MANDIRI" && (
+                    <div className="space-y-1">
+                      <span className="text-[10px] text-slate-400 font-bold">Nomor Virtual Account Mandiri:</span>
+                      <div className="p-3 bg-slate-950 rounded-xl border border-slate-800 flex items-center justify-between font-mono">
+                        <span className="text-base font-black text-amber-400 tracking-wider">
+                          890080{currentUser.phoneNumber || "08123456789"}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            navigator.clipboard.writeText(`890080${currentUser.phoneNumber || "08123456789"}`);
+                            setCopiedCode(true);
+                            setTimeout(() => setCopiedCode(false), 2000);
+                          }}
+                          className="px-2.5 py-1 bg-amber-500 text-slate-950 font-bold rounded text-[10.5px] cursor-pointer flex items-center gap-1"
+                        >
+                          {copiedCode ? <Check size={12} /> : <Copy size={12} />}
+                          <span>{copiedCode ? "Tersalin" : "Salin VA"}</span>
+                        </button>
+                      </div>
+                      <p className="text-[10.5px] text-slate-400">Atas Nama: REJEKI MACAN PLATFORM</p>
+                    </div>
+                  )}
+
+                  {selectedPaymentMethod === "VA_BRI" && (
+                    <div className="space-y-1">
+                      <span className="text-[10px] text-slate-400 font-bold">Nomor BRIVA (BRI Virtual Account):</span>
+                      <div className="p-3 bg-slate-950 rounded-xl border border-slate-800 flex items-center justify-between font-mono">
+                        <span className="text-base font-black text-amber-400 tracking-wider">
+                          888100{currentUser.phoneNumber || "08123456789"}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            navigator.clipboard.writeText(`888100${currentUser.phoneNumber || "08123456789"}`);
+                            setCopiedCode(true);
+                            setTimeout(() => setCopiedCode(false), 2000);
+                          }}
+                          className="px-2.5 py-1 bg-amber-500 text-slate-950 font-bold rounded text-[10.5px] cursor-pointer flex items-center gap-1"
+                        >
+                          {copiedCode ? <Check size={12} /> : <Copy size={12} />}
+                          <span>{copiedCode ? "Tersalin" : "Salin VA"}</span>
+                        </button>
+                      </div>
+                      <p className="text-[10.5px] text-slate-400">Atas Nama: REJEKI MACAN PLATFORM</p>
+                    </div>
+                  )}
+
+                  {selectedPaymentMethod === "BANK_TRANSFER" && (
+                    <div className="space-y-1">
+                      <span className="text-[10px] text-slate-400 font-bold">Rekening Bank BCA Resmi:</span>
+                      <div className="p-3 bg-slate-950 rounded-xl border border-slate-800 flex items-center justify-between font-mono">
+                        <div>
+                          <span className="text-base font-black text-amber-400 tracking-wider block">8830-1928-33</span>
+                          <span className="text-[10px] text-slate-400 block font-sans">A/N PT REJEKI MACAN NUSANTARA</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            navigator.clipboard.writeText("8830192833");
+                            setCopiedCode(true);
+                            setTimeout(() => setCopiedCode(false), 2000);
+                          }}
+                          className="px-2.5 py-1 bg-amber-500 text-slate-950 font-bold rounded text-[10.5px] cursor-pointer flex items-center gap-1"
+                        >
+                          {copiedCode ? <Check size={12} /> : <Copy size={12} />}
+                          <span>{copiedCode ? "Tersalin" : "Salin Rek"}</span>
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="flex items-center justify-between border-t border-slate-800 pt-2 font-mono text-xs">
+                    <span>Total Transfer:</span>
+                    <strong className="text-emerald-400 font-black text-sm">Rp {topUpAmount.toLocaleString("id-ID")}</strong>
+                  </div>
+                </div>
+
+                {/* Form Konfirmasi Ke Admin */}
+                <div className="space-y-3 pt-2">
+                  <div className="flex items-center gap-2 text-slate-900 font-black">
+                    <FileCheck size={16} className="text-amber-600" />
+                    <span>Form Konfirmasi Pembayaran Ke Admin</span>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="font-bold text-slate-800 block">Nama Pemilik Rekening / Pengirim:</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="Contoh: Hendra Wijaya"
+                      value={senderName}
+                      onChange={(e) => setSenderName(e.target.value)}
+                      className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl font-semibold text-slate-900 text-xs"
+                    />
+                  </div>
+
+                  {/* Upload Bukti Transfer */}
+                  <div className="space-y-1">
+                    <label className="font-bold text-slate-800 block">Upload Bukti Transfer / Resi (Opsional):</label>
+                    {proofUrl ? (
+                      <div className="relative inline-block border border-amber-500 rounded-xl overflow-hidden bg-slate-900 max-w-xs">
+                        <img src={proofUrl} alt="Bukti Transfer" className="w-full h-28 object-cover" />
+                        <button
+                          type="button"
+                          onClick={() => setProofUrl("")}
+                          className="absolute top-1 right-1 p-1 bg-red-600 text-white rounded-full cursor-pointer"
+                        >
+                          <X size={12} />
+                        </button>
+                      </div>
+                    ) : (
+                      <label className="flex items-center gap-2 p-2.5 border-2 border-dashed border-slate-300 hover:border-amber-500 rounded-xl bg-slate-50 hover:bg-amber-500/5 transition-all cursor-pointer text-slate-600 font-bold text-xs">
+                        <Upload size={16} className="text-amber-600" />
+                        <span>Pilih Foto Bukti Transfer dari Galeri</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={handleProofFileUpload}
+                          className="hidden"
+                        />
+                      </label>
+                    )}
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="font-bold text-slate-800 block">Catatan Tambahan (Opsional):</label>
+                    <input
+                      type="text"
+                      placeholder="Contoh: Transfer via M-Banking BCA pk 14.30"
+                      value={proofNotes}
+                      onChange={(e) => setProofNotes(e.target.value)}
+                      className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 text-xs"
+                    />
+                  </div>
+                </div>
+
+                <div className="pt-3 flex items-center justify-between gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setTopUpStep(1)}
+                    className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl cursor-pointer"
+                  >
+                    Kembali
+                  </button>
+
+                  <button
+                    type="submit"
+                    disabled={isTopUpLoading}
+                    className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-black rounded-xl shadow-md cursor-pointer flex items-center gap-2"
+                  >
+                    {isTopUpLoading ? <RefreshCw size={14} className="animate-spin" /> : <Send size={14} />}
+                    <span>Kirim Konfirmasi Deposit Ke Admin</span>
+                  </button>
+                </div>
+              </form>
+            )}
+
+            {/* STEP 3: RIWAYAT & STATUS PENGASUHAN DEPOSIT */}
+            {topUpStep === 3 && (
+              <div className="space-y-4 text-xs">
+                <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+                  <h4 className="font-black text-slate-900 text-sm">Riwayat & Status Pengajuan Deposit</h4>
+                  <button
+                    onClick={loadMyDeposits}
+                    className="p-1 text-slate-500 hover:text-slate-900 cursor-pointer flex items-center gap-1 font-bold text-[11px]"
+                  >
+                    <RefreshCw size={12} /> Sync Status
+                  </button>
+                </div>
+
+                {myDeposits.length === 0 ? (
+                  <div className="p-8 text-center bg-slate-50 rounded-2xl border border-slate-200 space-y-2">
+                    <Coins size={32} className="mx-auto text-slate-300" />
+                    <p className="font-bold text-slate-600">Belum Ada Riwayat Deposit</p>
+                    <p className="text-[11px] text-slate-400">Silakan lakukan top up saldo deposit pertama Anda.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2.5 max-h-72 overflow-y-auto pr-1">
+                    {myDeposits.map((dep) => (
+                      <div key={dep.id} className="p-3 bg-slate-50 rounded-2xl border border-slate-200 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="font-mono text-[10px] font-bold text-slate-400">{dep.id} • {new Date(dep.createdAt).toLocaleDateString("id-ID")}</span>
+                          <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase ${
+                            dep.status === "APPROVED"
+                              ? "bg-emerald-100 text-emerald-800 border border-emerald-300"
+                              : dep.status === "REJECTED"
+                              ? "bg-red-100 text-red-800 border border-red-300"
+                              : "bg-amber-100 text-amber-800 border border-amber-300 animate-pulse"
+                          }`}>
+                            {dep.status === "APPROVED" ? "✓ Saldo Masuk" : dep.status === "REJECTED" ? "✕ Ditolak" : "⏳ Menunggu Admin"}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center justify-between font-mono">
+                          <span className="font-black text-slate-900 text-sm">Rp {dep.amount?.toLocaleString("id-ID")}</span>
+                          <span className="px-2 py-0.5 bg-slate-200 text-slate-700 font-bold text-[10px] rounded">{dep.paymentMethod}</span>
+                        </div>
+
+                        {dep.notes && <p className="text-[11px] text-slate-600">Catatan: {dep.notes}</p>}
+                        {dep.rejectionReason && (
+                          <div className="p-2 bg-red-50 text-red-700 rounded-lg text-[10.5px] border border-red-200">
+                            <strong>Alasan Penolakan:</strong> {dep.rejectionReason}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <div className="pt-2 flex justify-end">
+                  <button
+                    onClick={() => setTopUpStep(1)}
+                    className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-xl text-xs cursor-pointer"
+                  >
+                    + Buat Top Up Baru
+                  </button>
+                </div>
               </div>
-            </form>
+            )}
           </div>
         </div>
       )}

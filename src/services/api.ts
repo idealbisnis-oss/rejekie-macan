@@ -131,6 +131,44 @@ export async function apiUpdateInterest(interestId: string, status: string, admi
   return res.json();
 }
 
+export async function apiGetDeposits(userId?: string) {
+  const query = userId ? `?userId=${userId}` : "";
+  const res = await fetch(`/api/deposits${query}`);
+  return res.json();
+}
+
+export async function apiSubmitDeposit(depositData: {
+  userId: string;
+  amount: number;
+  paymentMethod: string;
+  senderName?: string;
+  proofUrl?: string;
+  notes?: string;
+}) {
+  const res = await fetch("/api/deposits", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(depositData)
+  });
+  return res.json();
+}
+
+export async function apiApproveDeposit(depositId: string) {
+  const res = await fetch(`/api/deposits/${depositId}/approve`, {
+    method: "PUT"
+  });
+  return res.json();
+}
+
+export async function apiRejectDeposit(depositId: string, rejectionReason?: string) {
+  const res = await fetch(`/api/deposits/${depositId}/reject`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ rejectionReason })
+  });
+  return res.json();
+}
+
 export async function apiGetAdminStats() {
   const res = await fetch("/api/admin/stats");
   return res.json();

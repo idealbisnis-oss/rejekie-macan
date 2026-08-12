@@ -182,6 +182,23 @@ const INITIAL_DATA = {
       userMessage: "Saya punya buyer konsorsium yang mencari lahan industri di Cikarang. Dana siap di atas 100M.",
       adminNotes: "Buyer & SKBDN terverifikasi valid oleh Admin Platform."
     }
+  ],
+  deposits: [
+    {
+      id: "DEP-1001",
+      userId: "user-1",
+      userName: "Hendra Wijaya",
+      userEmail: "hendra@broker.id",
+      userPhone: "081122334455",
+      amount: 100000,
+      paymentMethod: "QRIS",
+      paymentCode: "QRIS-RM-1001",
+      senderName: "Hendra W",
+      proofUrl: "https://images.unsplash.com/photo-1559526324-4b87b5e36e44?auto=format&fit=crop&q=80&w=400",
+      notes: "Transfer via QRIS Bank BCA",
+      status: "PENDING",
+      createdAt: new Date(Date.now() - 2 * 3600 * 1000).toISOString()
+    }
   ]
 };
 
@@ -223,6 +240,11 @@ function readDB() {
       }
       return true;
     });
+
+    if (!db.deposits) {
+      db.deposits = [];
+      changed = true;
+    }
 
     if (changed) {
       db.supplyListings = validSupply;
@@ -652,7 +674,124 @@ app.put("/api/interests/:id", (req, res) => {
   res.status(404).json({ success: false, message: "Data minat tidak ditemukan." });
 });
 
-// 6. Admin Overview Stats
+// 6. Deposit Requests Endpoints
+app.get("/api/deposits", (req, res) => {
+  const { userId } = req.query;
+  const db = readDB();
+  let deposits = db.deposits || [];
+
+  if (userId) {
+    deposits = deposits.filter((d: any) => d.userId === userId);
+  }
+
+  res.json({ success: true, deposits });
+});
+
+app.post("/api/deposits", (req, res) => {
+  const { userId, amount, paymentMethod, senderName, proofUrl, notes } = req.body;
+
+  const numAmount = Number(amount);
+  if (!userId || !numAmount || numAmount <= 0 || !paymentMethod) {
+    return res.status(400).json({ success: false, message: "User ID, nominal top up, dan metode pembayaran wajib diisi." });
+  }
+
+  const db = readDB();
+  const user = db.users.find((u: any) => u.id === userId);
+  if (!user) {
+    return res.status(404).json({ success: false, message: "User tidak ditemukan." });
+  }
+
+  let codePrefix = "QRIS";
+  if (paymentMethod === "VA_BCA") codePrefix = "880010" + user.phoneNumber;
+  else if (paymentMethod === "VA_MANDIRI") codePrefix = "890080" + user.phoneNumber;
+  else if (paymentMethod === "VA_BRI") codePrefix = "888100" + user.phoneNumber;
+  else if (paymentMethod === "BANK_TRANSFER") codePrefix = "BCA-8830192833";
+  else codePrefix = `QRIS-RM-${Date.now().toString().slice(-4)}`;
+
+  const newDeposit = {
+    id: `DEP-${Date.now().toString().slice(-5)}`,
+    userId,
+    userName: user.fullName,
+    userEmail: user.email,
+    userPhone: user.phoneNumber,
+    amount: numAmount,
+    paymentMethod,
+    paymentCode: codePrefix,
+    senderName: senderName || user.fullName,
+    proofUrl: proofUrl || "",
+    notes: notes || `Top Up Saldo Deposit via ${paymentMethod}`,
+    status: "PENDING",
+    createdAt: new Date().toISOString()
+  };
+
+  db.deposits.unshift(newDeposit);
+  writeDB(db);
+
+  res.json({
+    success: true,
+    message: `Konfirmasi Top Up Deposit Rp ${numAmount.toLocaleString("id-ID")} berhasil dikirimkan ke Admin! Saldo akan bertambah otomatis setelah diverifikasi Admin.`,
+    deposit: newDeposit
+  });
+});
+
+app.put("/api/deposits/:id/approve", (req, res) => {
+  const { id } = req.params;
+  const db = readDB();
+
+  const deposit = db.deposits.find((d: any) => d.id === id);
+  if (!deposit) {
+    return res.status(404).json({ success: false, message: "Pengajuan deposit tidak ditemukan." });
+  }
+
+  if (deposit.status === "APPROVED") {
+    return res.status(400).json({ success: false, message: "Pengajuan deposit ini sudah disetujui sebelumnya." });
+  }
+
+  const user = db.users.find((u: any) => u.id === deposit.userId);
+  if (!user) {
+    return res.status(404).json({ success: false, message: "Member pemilik deposit tidak ditemukan." });
+  }
+
+  // Credit balance to user
+  user.balance = (user.balance || 0) + deposit.amount;
+
+  // Update deposit status
+  deposit.status = "APPROVED";
+  deposit.approvedAt = new Date().toISOString();
+
+  writeDB(db);
+
+  res.json({
+    success: true,
+    message: `Top up deposit Rp ${deposit.amount.toLocaleString("id-ID")} untuk ${user.fullName} telah disetujui! Saldo member kini: Rp ${user.balance.toLocaleString("id-ID")}`,
+    deposit,
+    userBalance: user.balance
+  });
+});
+
+app.put("/api/deposits/:id/reject", (req, res) => {
+  const { id } = req.params;
+  const { rejectionReason } = req.body;
+  const db = readDB();
+
+  const deposit = db.deposits.find((d: any) => d.id === id);
+  if (!deposit) {
+    return res.status(404).json({ success: false, message: "Pengajuan deposit tidak ditemukan." });
+  }
+
+  deposit.status = "REJECTED";
+  deposit.rejectionReason = rejectionReason || "Bukti transfer tidak dapat diverifikasi.";
+
+  writeDB(db);
+
+  res.json({
+    success: true,
+    message: "Pengajuan deposit ditolak.",
+    deposit
+  });
+});
+
+// 7. Admin Overview Stats
 app.get("/api/admin/stats", (req, res) => {
   const db = readDB();
   res.json({
@@ -663,7 +802,9 @@ app.get("/api/admin/stats", (req, res) => {
     totalSupplyProjects: db.supplyListings.length,
     totalDemandProjects: db.demandListings.length,
     totalInterests: db.interests.length,
-    pendingInterests: db.interests.filter((i: any) => i.status === "PENDING_VERIFICATION").length
+    pendingInterests: db.interests.filter((i: any) => i.status === "PENDING_VERIFICATION").length,
+    totalDeposits: (db.deposits || []).length,
+    pendingDeposits: (db.deposits || []).filter((d: any) => d.status === "PENDING").length
   });
 });
 

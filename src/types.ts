@@ -26,6 +26,26 @@ export interface UserSession {
 
 export type ListingStatus = "VERIFIED" | "ON_PROGRESS" | "CLOSED";
 export type ModerationStatus = "PENDING" | "APPROVED" | "REJECTED";
+export type DepositStatus = "PENDING" | "APPROVED" | "REJECTED";
+export type PaymentMethod = "QRIS" | "VA_BCA" | "VA_MANDIRI" | "VA_BRI" | "BANK_TRANSFER";
+
+export interface DepositRequest {
+  id: string;
+  userId: string;
+  userName: string;
+  userEmail: string;
+  userPhone: string;
+  amount: number;
+  paymentMethod: PaymentMethod;
+  paymentCode: string;
+  senderName?: string;
+  proofUrl?: string;
+  notes?: string;
+  status: DepositStatus;
+  rejectionReason?: string;
+  createdAt: string;
+  approvedAt?: string;
+}
 
 export interface SupplyListing {
   id: string;

@@ -1,9 +1,14 @@
 import { useState, useEffect } from "react";
 import { 
   Users, CheckCircle2, XCircle, ShieldAlert, FileText, Database, 
-  Trash2, RefreshCw, Send, Check, AlertTriangle, Layers, Building2, UserCheck, Clock, CheckCircle
+  Trash2, RefreshCw, Send, Check, AlertTriangle, Layers, Building2, UserCheck, Clock, CheckCircle,
+  Coins, Eye, QrCode, Building, ExternalLink
 } from "lucide-react";
-import { apiGetUsers, apiUpdateUserKYC, apiDeleteUser, apiGetAdminStats, apiDeleteProject, apiGetInterests, apiUpdateInterest, apiModerateProject } from "../services/api";
+import { 
+  apiGetUsers, apiUpdateUserKYC, apiDeleteUser, apiGetAdminStats, 
+  apiDeleteProject, apiGetInterests, apiUpdateInterest, apiModerateProject,
+  apiGetDeposits, apiApproveDeposit, apiRejectDeposit
+} from "../services/api";
 
 interface DashboardAdminProps {
   supplyListings: any[];
@@ -12,31 +17,65 @@ interface DashboardAdminProps {
 }
 
 export default function DashboardAdmin({ supplyListings, demandListings, onRefreshData }: DashboardAdminProps) {
-  const [activeTab, setActiveTab] = useState<"USERS" | "PROJECTS" | "INTERESTS" | "DATABASE">("USERS");
+  const [activeTab, setActiveTab] = useState<"DEPOSITS" | "USERS" | "PROJECTS" | "INTERESTS" | "DATABASE">("DEPOSITS");
   const [projectFilter, setProjectFilter] = useState<"ALL" | "PENDING" | "APPROVED" | "REJECTED">("ALL");
+  const [depositFilter, setDepositFilter] = useState<"ALL" | "PENDING" | "APPROVED" | "REJECTED">("PENDING");
 
   const [users, setUsers] = useState<any[]>([]);
   const [interests, setInterests] = useState<any[]>([]);
+  const [deposits, setDeposits] = useState<any[]>([]);
   const [stats, setStats] = useState<any>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [selectedProofUrl, setSelectedProofUrl] = useState<string | null>(null);
 
   // Load Admin Data from Server API
   const loadData = async () => {
     setIsLoading(true);
     try {
-      const [uRes, iRes, sRes] = await Promise.all([
+      const [uRes, iRes, sRes, dRes] = await Promise.all([
         apiGetUsers(),
         apiGetInterests(),
-        apiGetAdminStats()
+        apiGetAdminStats(),
+        apiGetDeposits()
       ]);
 
       if (uRes.success) setUsers(uRes.users);
       if (iRes.success) setInterests(iRes.interests);
       if (sRes.success) setStats(sRes);
+      if (dRes.success) setDeposits(dRes.deposits || []);
     } catch (err) {
       console.error("Failed loading admin data:", err);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  // Deposit Approval Handlers
+  const handleApproveDeposit = async (id: string, amount: number, userName: string) => {
+    if (!confirm(`Setujui deposit sebesar Rp ${amount.toLocaleString("id-ID")} untuk ${userName}? Saldo user akan otomatis bertambah.`)) {
+      return;
+    }
+    const res = await apiApproveDeposit(id);
+    if (res.success) {
+      alert(res.message || "Deposit berhasil disetujui!");
+      loadData();
+      onRefreshData();
+    } else {
+      alert(res.message || "Gagal menyetujui deposit.");
+    }
+  };
+
+  const handleRejectDeposit = async (id: string, userName: string) => {
+    const reason = prompt(`Masukkan alasan penolakan deposit untuk ${userName}:`, "Bukti transfer tidak valid atau belum masuk.");
+    if (reason === null) return;
+
+    const res = await apiRejectDeposit(id, reason);
+    if (res.success) {
+      alert(res.message || "Deposit berhasil ditolak.");
+      loadData();
+      onRefreshData();
+    } else {
+      alert(res.message || "Gagal menolak deposit.");
     }
   };
 
@@ -141,15 +180,19 @@ export default function DashboardAdmin({ supplyListings, demandListings, onRefre
       {/* Stats Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         <div className="bg-white p-4 rounded-2xl border border-amber-200 shadow-sm">
-          <span className="text-[10px] font-bold uppercase text-amber-700 tracking-wider">Total Proyek Suplai</span>
-          <p className="text-2xl font-black text-amber-600 font-mono mt-1">{stats?.totalSupplyProjects || supplyListings.length}</p>
-          <p className="text-[10px] text-slate-500 mt-1">Listing Suplai Barang</p>
+          <span className="text-[10px] font-bold uppercase text-amber-700 tracking-wider">Deposit Pending</span>
+          <p className="text-2xl font-black text-amber-600 font-mono mt-1">
+            {deposits.filter(d => d.status === "PENDING").length} Permintaan
+          </p>
+          <p className="text-[10px] text-slate-500 mt-1">Total: {deposits.length} Deposit</p>
         </div>
 
         <div className="bg-white p-4 rounded-2xl border border-emerald-200 shadow-sm">
-          <span className="text-[10px] font-bold uppercase text-emerald-800 tracking-wider">Total Pencarian Buyer</span>
-          <p className="text-2xl font-black text-emerald-600 font-mono mt-1">{stats?.totalDemandProjects || demandListings.length}</p>
-          <p className="text-[10px] text-slate-500 mt-1">Listing Demand Buyer</p>
+          <span className="text-[10px] font-bold uppercase text-emerald-800 tracking-wider">Total Proyek Aktif</span>
+          <p className="text-2xl font-black text-emerald-600 font-mono mt-1">
+            {(stats?.totalSupplyProjects || supplyListings.length) + (stats?.totalDemandProjects || demandListings.length)}
+          </p>
+          <p className="text-[10px] text-slate-500 mt-1">Suplai & Demand Listing</p>
         </div>
 
         <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
@@ -163,12 +206,22 @@ export default function DashboardAdmin({ supplyListings, demandListings, onRefre
             <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping"></span>
             <span className="text-xs font-black font-mono">DATABASE ONLINE</span>
           </div>
-          <p className="text-[10px] text-slate-400 mt-1 font-mono">Single Server Storage</p>
+          <p className="text-[10px] text-slate-400 mt-1 font-mono">Deposit Auto-Credit Active</p>
         </div>
       </div>
 
       {/* Admin Tab Nav */}
       <div className="bg-white p-2 rounded-2xl border border-slate-200 shadow-sm flex flex-wrap gap-2 text-xs font-bold">
+        <button
+          onClick={() => setActiveTab("DEPOSITS")}
+          className={`px-4 py-2 rounded-xl transition-all cursor-pointer flex items-center gap-2 ${
+            activeTab === "DEPOSITS" ? "bg-amber-500 text-slate-950 font-black shadow-sm" : "text-slate-600 hover:text-slate-900"
+          }`}
+        >
+          <Coins size={14} />
+          <span>Konfirmasi Deposit ({deposits.filter(d => d.status === "PENDING").length} Pending)</span>
+        </button>
+
         <button
           onClick={() => setActiveTab("USERS")}
           className={`px-4 py-2 rounded-xl transition-all cursor-pointer flex items-center gap-2 ${
@@ -176,7 +229,7 @@ export default function DashboardAdmin({ supplyListings, demandListings, onRefre
           }`}
         >
           <Users size={14} />
-          <span>Kelola Member & Verifikasi KYC ({users.length})</span>
+          <span>Kelola Member & KYC ({users.length})</span>
         </button>
 
         <button
@@ -186,7 +239,7 @@ export default function DashboardAdmin({ supplyListings, demandListings, onRefre
           }`}
         >
           <Building2 size={14} />
-          <span>Kelola Proyek Database ({supplyListings.length + demandListings.length})</span>
+          <span>Kelola Proyek ({supplyListings.length + demandListings.length})</span>
         </button>
 
         <button
@@ -196,7 +249,7 @@ export default function DashboardAdmin({ supplyListings, demandListings, onRefre
           }`}
         >
           <Send size={14} />
-          <span>Persetujuan Minat Matchmaking ({interests.length})</span>
+          <span>Matchmaking Minat ({interests.length})</span>
         </button>
 
         <button
@@ -209,6 +262,154 @@ export default function DashboardAdmin({ supplyListings, demandListings, onRefre
           <span>Status Database Server</span>
         </button>
       </div>
+
+      {/* TAB CONTENT 0: DEPOSIT CONFIRMATIONS */}
+      {activeTab === "DEPOSITS" && (
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden space-y-4 p-4 sm:p-6">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+            <div>
+              <h3 className="text-base font-black text-slate-900 flex items-center gap-2">
+                <Coins size={18} className="text-amber-600" />
+                <span>Persetujuan & Verifikasi Uang Masuk Deposit Member</span>
+              </h3>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Cek mutasi rekening / QRIS. Setelah uang masuk dipastikan, klik tombol <strong>"✓ Setujui Deposit"</strong> untuk menambah saldo member secara otomatis.
+              </p>
+            </div>
+
+            {/* Filter Buttons */}
+            <div className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-xl text-xs font-bold shrink-0">
+              {(["ALL", "PENDING", "APPROVED", "REJECTED"] as const).map((st) => (
+                <button
+                  key={st}
+                  onClick={() => setDepositFilter(st)}
+                  className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+                    depositFilter === st
+                      ? "bg-slate-900 text-amber-400 font-black shadow-xs"
+                      : "text-slate-600 hover:text-slate-900"
+                  }`}
+                >
+                  {st === "ALL" ? "Semua" : st === "PENDING" ? "⏳ Pending" : st === "APPROVED" ? "✓ Disetujui" : "✕ Ditolak"}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Deposit List */}
+          {deposits.filter(d => depositFilter === "ALL" || d.status === depositFilter).length === 0 ? (
+            <div className="p-12 text-center bg-slate-50 rounded-2xl border border-slate-200 space-y-2">
+              <Coins size={36} className="mx-auto text-slate-300" />
+              <p className="font-bold text-slate-700">Tidak ada pengajuan deposit dengan status ini.</p>
+              <p className="text-xs text-slate-400">Pengajuan deposit baru dari member akan muncul di sini.</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {deposits
+                .filter(d => depositFilter === "ALL" || d.status === depositFilter)
+                .map((dep) => {
+                  const userDetail = users.find(u => u.id === dep.userId);
+                  return (
+                    <div
+                      key={dep.id}
+                      className="p-4 rounded-2xl border border-slate-200 bg-slate-50/50 hover:bg-slate-50 transition-all flex flex-col md:flex-row md:items-center justify-between gap-4"
+                    >
+                      {/* Left: User & Amount Info */}
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono font-bold text-[11px] text-slate-400">{dep.id}</span>
+                          <span className="text-[11px] text-slate-400">•</span>
+                          <span className="text-[11px] text-slate-500 font-medium">
+                            {new Date(dep.createdAt).toLocaleString("id-ID")}
+                          </span>
+                          <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase ${
+                            dep.status === "APPROVED"
+                              ? "bg-emerald-100 text-emerald-800 border border-emerald-300"
+                              : dep.status === "REJECTED"
+                              ? "bg-red-100 text-red-800 border border-red-300"
+                              : "bg-amber-100 text-amber-800 border border-amber-300 animate-pulse"
+                          }`}>
+                            {dep.status === "APPROVED" ? "✓ Disetujui & Masuk" : dep.status === "REJECTED" ? "✕ Ditolak" : "⏳ Pending Cek Admin"}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 bg-amber-500 text-slate-950 font-black rounded-xl flex items-center justify-center shrink-0">
+                            {dep.senderName ? dep.senderName[0].toUpperCase() : "M"}
+                          </div>
+                          <div>
+                            <h4 className="font-black text-slate-900 text-sm">{dep.senderName || userDetail?.fullName || "Member"}</h4>
+                            <p className="text-xs text-slate-500 font-mono">
+                              Email: {userDetail?.email || "-"} • WA: {userDetail?.phoneNumber || "-"}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-3 pt-1 text-xs">
+                          <span className="p-2 bg-slate-900 text-amber-400 font-mono font-black text-sm rounded-xl">
+                            Rp {dep.amount?.toLocaleString("id-ID")}
+                          </span>
+                          <span className="px-2.5 py-1 bg-slate-200 text-slate-800 font-bold rounded-lg font-mono">
+                            Metode: {dep.paymentMethod}
+                          </span>
+                          {dep.notes && (
+                            <span className="text-slate-600 bg-white border border-slate-200 px-2.5 py-1 rounded-lg">
+                              Catatan: {dep.notes}
+                            </span>
+                          )}
+                        </div>
+
+                        {dep.rejectionReason && (
+                          <div className="p-2.5 bg-red-50 border border-red-200 rounded-xl text-red-700 text-xs">
+                            <strong>Alasan Penolakan:</strong> {dep.rejectionReason}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Right: Proof & Actions */}
+                      <div className="flex flex-col sm:flex-row items-center gap-3 shrink-0 pt-2 md:pt-0 border-t md:border-t-0 border-slate-200">
+                        {/* Bukti Transfer Button / Thumbnail */}
+                        {dep.proofUrl ? (
+                          <button
+                            type="button"
+                            onClick={() => setSelectedProofUrl(dep.proofUrl)}
+                            className="p-2 bg-white border border-slate-300 hover:border-amber-500 rounded-xl text-xs font-bold text-slate-700 hover:text-amber-700 flex items-center gap-2 cursor-pointer shadow-xs"
+                          >
+                            <img src={dep.proofUrl} alt="Resi" className="w-8 h-8 object-cover rounded-lg" />
+                            <span>Lihat Bukti Foto</span>
+                            <Eye size={14} />
+                          </button>
+                        ) : (
+                          <span className="text-[11px] text-slate-400 italic">Tidak ada foto bukti</span>
+                        )}
+
+                        {/* Action buttons if status PENDING */}
+                        {dep.status === "PENDING" && (
+                          <div className="flex items-center gap-2 w-full sm:w-auto">
+                            <button
+                              onClick={() => handleApproveDeposit(dep.id, dep.amount, dep.senderName || userDetail?.fullName || "Member")}
+                              className="flex-1 sm:flex-initial px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs rounded-xl shadow-md cursor-pointer flex items-center justify-center gap-1.5 transition-all"
+                            >
+                              <CheckCircle2 size={16} />
+                              <span>Setujui Deposit</span>
+                            </button>
+
+                            <button
+                              onClick={() => handleRejectDeposit(dep.id, dep.senderName || userDetail?.fullName || "Member")}
+                              className="flex-1 sm:flex-initial px-3 py-2.5 bg-red-100 hover:bg-red-200 text-red-700 font-bold text-xs rounded-xl cursor-pointer flex items-center justify-center gap-1 transition-all"
+                            >
+                              <XCircle size={16} />
+                              <span>Tolak</span>
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* TAB CONTENT 1: USERS & KYC */}
       {activeTab === "USERS" && (
@@ -594,6 +795,34 @@ export default function DashboardAdmin({ supplyListings, demandListings, onRefre
           <p className="text-[11px] text-slate-400 font-sans leading-relaxed">
             💡 <strong>Keunggulan Single Server Database:</strong> Seluruh pendaftaran member baru, posting proyek, dan pengajuan minat tersimpan di server backend tunggal. Setiap kali aplikasi dibuka di HP atau laptop manapun, data yang ditampilkan selalu sinkron secara real-time!
           </p>
+        </div>
+      )}
+
+      {/* MODAL PREVIEW BUKTI TRANSFER FOTO */}
+      {selectedProofUrl && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 p-4 max-w-lg w-full space-y-3 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+              <h4 className="font-black text-slate-900 text-sm">Pratinjau Bukti Transfer Deposit</h4>
+              <button
+                onClick={() => setSelectedProofUrl(null)}
+                className="p-1 text-slate-400 hover:text-slate-600 rounded-full cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="rounded-2xl overflow-hidden bg-slate-900 flex items-center justify-center max-h-[70vh]">
+              <img src={selectedProofUrl} alt="Bukti Transfer" className="max-w-full max-h-[65vh] object-contain" />
+            </div>
+            <div className="flex justify-end">
+              <button
+                onClick={() => setSelectedProofUrl(null)}
+                className="px-4 py-2 bg-slate-900 text-amber-400 font-bold rounded-xl text-xs cursor-pointer"
+              >
+                Tutup
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
