@@ -193,7 +193,46 @@ function readDB() {
       return INITIAL_DATA;
     }
     const content = fs.readFileSync(DB_FILE, "utf-8");
-    return JSON.parse(content);
+    const db = JSON.parse(content);
+
+    const now = Date.now();
+    let changed = false;
+
+    // Filter out expired supply listings (auto-delete after 10 days limit / expiresAt)
+    const validSupply = (db.supplyListings || []).filter((s: any) => {
+      if (s.expiresAt && new Date(s.expiresAt).getTime() < now) {
+        changed = true;
+        return false;
+      }
+      if (!s.moderationStatus) {
+        s.moderationStatus = "APPROVED";
+        changed = true;
+      }
+      return true;
+    });
+
+    // Filter out expired demand listings
+    const validDemand = (db.demandListings || []).filter((d: any) => {
+      if (d.expiresAt && new Date(d.expiresAt).getTime() < now) {
+        changed = true;
+        return false;
+      }
+      if (!d.moderationStatus) {
+        d.moderationStatus = "APPROVED";
+        changed = true;
+      }
+      return true;
+    });
+
+    if (changed) {
+      db.supplyListings = validSupply;
+      db.demandListings = validDemand;
+      try {
+        fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2), "utf-8");
+      } catch (e) {}
+    }
+
+    return db;
   } catch (err) {
     console.error("Error reading database:", err);
     return INITIAL_DATA;
@@ -323,10 +362,16 @@ app.delete("/api/users/:id", (req, res) => {
 // 4. Projects / Listings Endpoints
 app.get("/api/projects", (req, res) => {
   const db = readDB();
-  const { type, category, search, brokerId } = req.query;
+  const { type, category, search, brokerId, publicOnly, includeAll } = req.query;
 
   let supply = db.supplyListings || [];
   let demand = db.demandListings || [];
+
+  // If public view (no brokerId given and not explicitly asking for includeAll), filter to only APPROVED projects
+  if (publicOnly === "true" || (!brokerId && includeAll !== "true")) {
+    supply = supply.filter((s: any) => s.moderationStatus === "APPROVED" || (!s.moderationStatus && s.status === "VERIFIED"));
+    demand = demand.filter((d: any) => d.moderationStatus === "APPROVED" || (!d.moderationStatus && d.status === "VERIFIED"));
+  }
 
   if (category) {
     supply = supply.filter((s: any) => s.category === category);
@@ -373,6 +418,7 @@ app.post("/api/projects", (req, res) => {
   const broker = db.users.find((u: any) => u.id === brokerId);
   const brokerName = broker ? broker.fullName : "Member Platform";
   const brokerPhone = broker ? broker.phoneNumber : "08123456789";
+  const initialModeration = broker?.role === "ADMIN" ? "APPROVED" : "PENDING";
 
   if (projectType === "supply") {
     const newSupply = {
@@ -386,16 +432,23 @@ app.post("/api/projects", (req, res) => {
       brokerName,
       brokerPhone,
       status: "VERIFIED",
+      moderationStatus: initialModeration,
       imageUrl: imageUrl || "https://images.unsplash.com/photo-1582407947304-fd86f028f716?auto=format&fit=crop&q=80&w=1200",
       createdAt: new Date().toISOString(),
-      expiresAt: new Date(Date.now() + 14 * 24 * 3600 * 1000).toISOString(),
+      expiresAt: new Date(Date.now() + 10 * 24 * 3600 * 1000).toISOString(), // 10 Hari Limit Masa Aktif Gratis
       viewsCount: 1,
       isPremium: Boolean(isPremium),
       isA1Verified: true
     };
     db.supplyListings.unshift(newSupply);
     writeDB(db);
-    return res.json({ success: true, message: "Proyek Penawaran Barang berhasil diposting ke database!", project: newSupply });
+    return res.json({
+      success: true,
+      message: initialModeration === "APPROVED" 
+        ? "Proyek berhasil dipublikasikan!" 
+        : "Proyek berhasil diajukan! Menunggu persetujuan Admin sebelum tampil di Katalog Publik.",
+      project: newSupply
+    });
   } else {
     const newDemand = {
       id: `DEM-${String(db.demandListings.length + 1).padStart(3, "0")}`,
@@ -409,15 +462,132 @@ app.post("/api/projects", (req, res) => {
       brokerName,
       brokerPhone,
       status: "VERIFIED",
+      moderationStatus: initialModeration,
       createdAt: new Date().toISOString(),
-      expiresAt: new Date(Date.now() + 14 * 24 * 3600 * 1000).toISOString(),
+      expiresAt: new Date(Date.now() + 10 * 24 * 3600 * 1000).toISOString(), // 10 Hari Limit Masa Aktif Gratis
       isPremium: Boolean(isPremium),
       fundingCriteria: "Verified Buyer Criteria"
     };
     db.demandListings.unshift(newDemand);
     writeDB(db);
-    return res.json({ success: true, message: "Proyek Pencarian Buyer berhasil diposting ke database!", project: newDemand });
+    return res.json({
+      success: true,
+      message: initialModeration === "APPROVED" 
+        ? "Proyek pencarian buyer berhasil dipublikasikan!" 
+        : "Proyek berhasil diajukan! Menunggu persetujuan Admin sebelum tampil di Katalog Publik.",
+      project: newDemand
+    });
   }
+});
+
+// Update Moderation Status (Admin Approve / Reject)
+app.put("/api/projects/:id/moderation", (req, res) => {
+  const { id } = req.params;
+  const { moderationStatus, rejectionReason } = req.body;
+
+  if (!["APPROVED", "REJECTED", "PENDING"].includes(moderationStatus)) {
+    return res.status(400).json({ success: false, message: "Status moderasi tidak valid." });
+  }
+
+  const db = readDB();
+  let project = db.supplyListings.find((s: any) => s.id === id);
+  if (!project) {
+    project = db.demandListings.find((d: any) => d.id === id);
+  }
+
+  if (!project) {
+    return res.status(404).json({ success: false, message: "Proyek tidak ditemukan." });
+  }
+
+  project.moderationStatus = moderationStatus;
+  if (rejectionReason !== undefined) {
+    project.rejectionReason = rejectionReason;
+  }
+
+  // Set 10 days active limit from approval time if it was approved
+  if (moderationStatus === "APPROVED") {
+    project.expiresAt = new Date(Date.now() + 10 * 24 * 3600 * 1000).toISOString();
+  }
+
+  writeDB(db);
+  res.json({ success: true, message: `Status proyek berhasil diperbarui menjadi '${moderationStatus}'.`, project });
+});
+
+// Top Up Deposit Saldo
+app.post("/api/users/:id/deposit", (req, res) => {
+  const { id } = req.params;
+  const { amount } = req.body;
+
+  const numAmount = Number(amount);
+  if (!numAmount || numAmount <= 0) {
+    return res.status(400).json({ success: false, message: "Jumlah deposit harus lebih dari 0." });
+  }
+
+  const db = readDB();
+  const user = db.users.find((u: any) => u.id === id);
+  if (!user) {
+    return res.status(404).json({ success: false, message: "User tidak ditemukan." });
+  }
+
+  user.balance = (user.balance || 0) + numAmount;
+  writeDB(db);
+
+  const { password: _, ...safeUser } = user;
+  res.json({
+    success: true,
+    message: `Top up deposit berhasil sebesar Rp ${numAmount.toLocaleString("id-ID")}. Saldo aktif: Rp ${user.balance.toLocaleString("id-ID")}`,
+    user: safeUser
+  });
+});
+
+// Perpanjang Masa Tayang Proyek (Rp 500 / hari)
+app.post("/api/projects/:id/extend", (req, res) => {
+  const { id } = req.params;
+  const { userId, days } = req.body;
+
+  const numDays = Math.max(1, Number(days) || 1);
+  const cost = numDays * 500; // Rp 500 per hari
+
+  const db = readDB();
+  const user = db.users.find((u: any) => u.id === userId);
+  if (!user) {
+    return res.status(404).json({ success: false, message: "User tidak ditemukan." });
+  }
+
+  if ((user.balance || 0) < cost) {
+    return res.status(400).json({
+      success: false,
+      message: `Saldo deposit Anda (Rp ${(user.balance || 0).toLocaleString("id-ID")}) tidak cukup untuk perpanjangan ${numDays} hari (Biaya: Rp ${cost.toLocaleString("id-ID")}). Silakan top up deposit terlebih dahulu.`
+    });
+  }
+
+  let project = db.supplyListings.find((s: any) => s.id === id);
+  if (!project) {
+    project = db.demandListings.find((d: any) => d.id === id);
+  }
+
+  if (!project) {
+    return res.status(404).json({ success: false, message: "Proyek tidak ditemukan." });
+  }
+
+  // Deduct balance
+  user.balance = (user.balance || 0) - cost;
+
+  // Extend expiration date
+  const currentExpiry = new Date(project.expiresAt).getTime();
+  const baseTime = currentExpiry > Date.now() ? currentExpiry : Date.now();
+  const newExpiry = new Date(baseTime + numDays * 24 * 3600 * 1000).toISOString();
+  project.expiresAt = newExpiry;
+
+  writeDB(db);
+
+  const { password: _, ...safeUser } = user;
+  res.json({
+    success: true,
+    message: `Masa tayang proyek berhasil diperpanjang ${numDays} hari seharga Rp ${cost.toLocaleString("id-ID")}. Masa aktif berlaku hingga ${new Date(newExpiry).toLocaleDateString("id-ID")}.`,
+    user: safeUser,
+    project
+  });
 });
 
 app.delete("/api/projects/:id", (req, res) => {

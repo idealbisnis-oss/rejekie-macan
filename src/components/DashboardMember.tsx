@@ -1,10 +1,12 @@
-import { useState } from "react";
+import React, { useState } from "react";
 import { 
   Building2, PlusCircle, User, ShieldCheck, CheckCircle2, Send, 
   Trash2, RefreshCw, Layers, MapPin, Tag, AlertCircle, Sparkles,
-  Upload, X, Link as LinkIcon, Image as ImageIcon
+  Upload, X, Link as LinkIcon, Image as ImageIcon, Wallet, Clock,
+  Calendar, Coins, XCircle, Plus, Info, AlertTriangle, ShieldAlert
 } from "lucide-react";
 import { UserSession } from "../types";
+import { apiTopUpDeposit, apiExtendProject } from "../services/api";
 
 interface DashboardMemberProps {
   currentUser: UserSession;
@@ -14,6 +16,7 @@ interface DashboardMemberProps {
   onCreateProject: (projectData: any) => Promise<boolean>;
   onDeleteProject: (projectId: string) => Promise<boolean>;
   onRefreshData: () => void;
+  onUpdateUserSession?: (user: UserSession) => void;
 }
 
 export default function DashboardMember({
@@ -23,7 +26,8 @@ export default function DashboardMember({
   interests,
   onCreateProject,
   onDeleteProject,
-  onRefreshData
+  onRefreshData,
+  onUpdateUserSession
 }: DashboardMemberProps) {
   const [activeSubTab, setActiveSubTab] = useState<"CREATE" | "MY_PROJECTS" | "INTERESTS" | "PROFILE">("MY_PROJECTS");
 
@@ -40,6 +44,16 @@ export default function DashboardMember({
   const [imageUrl, setImageUrl] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // State Deposit Top Up Modal
+  const [showTopUpModal, setShowTopUpModal] = useState<boolean>(false);
+  const [topUpAmount, setTopUpAmount] = useState<number>(50000);
+  const [isTopUpLoading, setIsTopUpLoading] = useState<boolean>(false);
+
+  // State Perpanjang Posting Modal
+  const [extendingProject, setExtendingProject] = useState<any | null>(null);
+  const [extensionDays, setExtensionDays] = useState<number>(10);
+  const [isExtendingLoading, setIsExtendingLoading] = useState<boolean>(false);
+
   const categories = [
     "Properti & Tanah",
     "Komoditas & Hasil Bumi",
@@ -52,6 +66,15 @@ export default function DashboardMember({
   const mySupply = supplyListings.filter((s) => s.brokerId === currentUser.id);
   const myDemand = demandListings.filter((d) => d.brokerId === currentUser.id);
   const myInterests = interests.filter((i) => i.interestedBrokerId === currentUser.id || i.ownerBrokerId === currentUser.id);
+
+  // Helper sisa hari
+  const getRemainingDays = (expiresAtStr: string) => {
+    if (!expiresAtStr) return 0;
+    const expiry = new Date(expiresAtStr).getTime();
+    const now = Date.now();
+    const diff = Math.ceil((expiry - now) / (1000 * 60 * 60 * 24));
+    return diff > 0 ? diff : 0;
+  };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -116,7 +139,7 @@ export default function DashboardMember({
     setIsSubmitting(false);
 
     if (success) {
-      alert("🎉 Proyek Anda berhasil terpublikasi di database server!");
+      alert("🎉 Proyek Anda berhasil diajukan! Menunggu verifikasi/persetujuan Admin sebelum tampil di katalog publik.");
       setTitle("");
       setSpecifications("");
       setPrice("");
@@ -136,6 +159,53 @@ export default function DashboardMember({
     if (ok) {
       alert("Proyek berhasil dihapus.");
       onRefreshData();
+    }
+  };
+
+  // Top Up Deposit Submit
+  const handleTopUpSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (topUpAmount <= 0) {
+      alert("Jumlah deposit harus lebih dari 0.");
+      return;
+    }
+    setIsTopUpLoading(true);
+    const res = await apiTopUpDeposit(currentUser.id, topUpAmount);
+    setIsTopUpLoading(false);
+    if (res.success && res.user) {
+      alert(res.message);
+      if (onUpdateUserSession) onUpdateUserSession(res.user);
+      setShowTopUpModal(false);
+      onRefreshData();
+    } else {
+      alert(res.message || "Gagal melakukan top up deposit.");
+    }
+  };
+
+  // Extend Project Submit
+  const handleExtendSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!extendingProject) return;
+    const cost = extensionDays * 500;
+    if ((currentUser.balance || 0) < cost) {
+      alert(`Saldo deposit Anda (Rp ${(currentUser.balance || 0).toLocaleString("id-ID")}) kurang dari biaya perpanjangan Rp ${cost.toLocaleString("id-ID")}. Silakan isi saldo deposit terlebih dahulu.`);
+      setShowTopUpModal(true);
+      return;
+    }
+
+    setIsExtendingLoading(true);
+    const res = await apiExtendProject(extendingProject.id, currentUser.id, extensionDays);
+    setIsExtendingLoading(false);
+
+    if (res.success) {
+      alert(res.message);
+      if (res.user && onUpdateUserSession) {
+        onUpdateUserSession(res.user);
+      }
+      setExtendingProject(null);
+      onRefreshData();
+    } else {
+      alert(res.message || "Gagal memperpanjang proyek.");
     }
   };
 
@@ -171,6 +241,37 @@ export default function DashboardMember({
           <PlusCircle size={16} />
           <span>+ Pasang Proyek Baru</span>
         </button>
+      </div>
+
+      {/* SALDO DEPOSIT & ATURAN POSTING IKLAN CARD */}
+      <div className="bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-slate-900/5 p-5 rounded-2xl border border-amber-500/30 shadow-sm flex flex-col lg:flex-row lg:items-center justify-between gap-5">
+        <div className="flex items-start gap-3.5">
+          <div className="p-3 bg-amber-500 text-slate-950 rounded-2xl shadow-md shrink-0 mt-0.5">
+            <Wallet size={24} />
+          </div>
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-600">Saldo Deposit Iklan Anda</span>
+              <span className="px-2 py-0.5 bg-amber-500/20 text-amber-800 text-[10px] font-bold rounded-full">Fitur Perpanjangan</span>
+            </div>
+            <p className="text-2xl font-black text-slate-900 font-mono">
+              Rp {(currentUser.balance || 0).toLocaleString("id-ID")}
+            </p>
+            <p className="text-[11px] text-slate-600 max-w-xl">
+              Postingan proyek berlaku <strong>Gratis 10 Hari</strong> setelah disetujui Admin. Setelah 10 hari, biaya perpanjangan iklan hanya <strong>Rp 500 / hari</strong> menggunakan saldo deposit ini.
+            </p>
+          </div>
+        </div>
+
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 shrink-0">
+          <button
+            onClick={() => setShowTopUpModal(true)}
+            className="px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-amber-400 font-black text-xs rounded-xl shadow-md transition-all cursor-pointer flex items-center justify-center gap-2"
+          >
+            <Coins size={15} />
+            <span>+ Top Up Saldo Deposit</span>
+          </button>
+        </div>
       </div>
 
       {/* Sub Tab Navigation */}
@@ -222,7 +323,9 @@ export default function DashboardMember({
           <div className="flex items-center justify-between border-b border-slate-200 pb-3">
             <div>
               <h3 className="text-base font-black text-slate-900">Daftar Proyek Yang Anda Posting</h3>
-              <p className="text-xs text-slate-500">Proyek ini tersimpan di server database central dan dapat dilihat publik.</p>
+              <p className="text-xs text-slate-500">
+                Lacak status persetujuan admin, sisa hari aktif (limit 10 hari gratis), dan perpanjang iklan Rp 500/hari.
+              </p>
             </div>
             <button
               onClick={onRefreshData}
@@ -246,49 +349,141 @@ export default function DashboardMember({
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {mySupply.map((item) => (
-                <div key={item.id} className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-2 text-xs">
-                  <div className="flex items-start justify-between gap-2">
-                    <span className="px-2 py-0.5 bg-amber-500 text-slate-950 font-black text-[9.5px] rounded uppercase">
-                      📦 Penawaran Barang
-                    </span>
-                    <button
-                      onClick={() => handleDelete(item.id)}
-                      className="p-1 text-red-600 hover:bg-red-100 rounded cursor-pointer"
-                      title="Hapus Proyek"
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  </div>
-                  <h4 className="font-bold text-slate-900">{item.title}</h4>
-                  <p className="text-slate-600 line-clamp-2">{item.specifications}</p>
-                  <p className="font-mono font-bold text-slate-800">
-                    Rp {item.price ? item.price.toLocaleString("id-ID") : "Penawaran"}
-                  </p>
-                </div>
-              ))}
+              {/* Supply Items */}
+              {mySupply.map((item) => {
+                const remDays = getRemainingDays(item.expiresAt);
+                const modStatus = item.moderationStatus || "APPROVED";
+                return (
+                  <div key={item.id} className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-3 text-xs flex flex-col justify-between">
+                    <div className="space-y-2">
+                      <div className="flex items-start justify-between gap-2 flex-wrap">
+                        <span className="px-2 py-0.5 bg-amber-500 text-slate-950 font-black text-[9.5px] rounded uppercase">
+                          📦 Penawaran Barang
+                        </span>
 
-              {myDemand.map((item) => (
-                <div key={item.id} className="p-4 bg-slate-50 rounded-2xl border border-emerald-200 space-y-2 text-xs">
-                  <div className="flex items-start justify-between gap-2">
-                    <span className="px-2 py-0.5 bg-emerald-600 text-white font-black text-[9.5px] rounded uppercase">
-                      💼 Pencarian Buyer
-                    </span>
-                    <button
-                      onClick={() => handleDelete(item.id)}
-                      className="p-1 text-red-600 hover:bg-red-100 rounded cursor-pointer"
-                      title="Hapus Proyek"
-                    >
-                      <Trash2 size={14} />
-                    </button>
+                        {/* Moderation Status Badge */}
+                        {modStatus === "APPROVED" && (
+                          <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 border border-emerald-300 font-bold text-[10px] rounded-full flex items-center gap-1">
+                            <CheckCircle2 size={12} className="text-emerald-600" /> Disetujui (Tayang Publik)
+                          </span>
+                        )}
+                        {modStatus === "PENDING" && (
+                          <span className="px-2 py-0.5 bg-amber-100 text-amber-900 border border-amber-300 font-bold text-[10px] rounded-full flex items-center gap-1">
+                            <Clock size={12} className="text-amber-600 animate-pulse" /> Menunggu Persetujuan Admin
+                          </span>
+                        )}
+                        {modStatus === "REJECTED" && (
+                          <span className="px-2 py-0.5 bg-red-100 text-red-800 border border-red-300 font-bold text-[10px] rounded-full flex items-center gap-1">
+                            <XCircle size={12} className="text-red-600" /> Ditolak Admin
+                          </span>
+                        )}
+                      </div>
+
+                      <h4 className="font-bold text-slate-900 text-sm">{item.title}</h4>
+                      <p className="text-slate-600 line-clamp-2">{item.specifications}</p>
+                      
+                      <div className="flex items-center justify-between font-mono font-bold text-slate-800 pt-1">
+                        <span>Rp {item.price ? item.price.toLocaleString("id-ID") : "Penawaran"}</span>
+                        <span className="text-[11px] text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200 flex items-center gap-1">
+                          <Clock size={11} /> Sisa {remDays} Hari Tayang
+                        </span>
+                      </div>
+
+                      {modStatus === "REJECTED" && item.rejectionReason && (
+                        <div className="p-2 bg-red-50 text-red-700 rounded-lg text-[11px] border border-red-200">
+                          <strong>Alasan Penolakan:</strong> {item.rejectionReason}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="pt-3 border-t border-slate-200 flex items-center justify-between gap-2">
+                      <button
+                        onClick={() => setExtendingProject(item)}
+                        className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-amber-400 font-bold text-[11px] rounded-xl flex items-center gap-1.5 transition-all cursor-pointer shadow-xs"
+                      >
+                        <Calendar size={13} />
+                        <span>Perpanjang Tayang (Rp 500/hari)</span>
+                      </button>
+
+                      <button
+                        onClick={() => handleDelete(item.id)}
+                        className="p-1.5 text-red-600 hover:bg-red-100 rounded-lg cursor-pointer"
+                        title="Hapus Proyek"
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </div>
                   </div>
-                  <h4 className="font-bold text-slate-900">{item.title}</h4>
-                  <p className="text-slate-600 line-clamp-2">{item.criteria}</p>
-                  <p className="font-mono font-bold text-emerald-800">
-                    Max: Rp {item.budgetMax ? item.budgetMax.toLocaleString("id-ID") : "Budget"}
-                  </p>
-                </div>
-              ))}
+                );
+              })}
+
+              {/* Demand Items */}
+              {myDemand.map((item) => {
+                const remDays = getRemainingDays(item.expiresAt);
+                const modStatus = item.moderationStatus || "APPROVED";
+                return (
+                  <div key={item.id} className="p-4 bg-slate-50 rounded-2xl border border-emerald-200 space-y-3 text-xs flex flex-col justify-between">
+                    <div className="space-y-2">
+                      <div className="flex items-start justify-between gap-2 flex-wrap">
+                        <span className="px-2 py-0.5 bg-emerald-600 text-white font-black text-[9.5px] rounded uppercase">
+                          💼 Pencarian Buyer
+                        </span>
+
+                        {/* Moderation Status Badge */}
+                        {modStatus === "APPROVED" && (
+                          <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 border border-emerald-300 font-bold text-[10px] rounded-full flex items-center gap-1">
+                            <CheckCircle2 size={12} className="text-emerald-600" /> Disetujui (Tayang Publik)
+                          </span>
+                        )}
+                        {modStatus === "PENDING" && (
+                          <span className="px-2 py-0.5 bg-amber-100 text-amber-900 border border-amber-300 font-bold text-[10px] rounded-full flex items-center gap-1">
+                            <Clock size={12} className="text-amber-600 animate-pulse" /> Menunggu Persetujuan Admin
+                          </span>
+                        )}
+                        {modStatus === "REJECTED" && (
+                          <span className="px-2 py-0.5 bg-red-100 text-red-800 border border-red-300 font-bold text-[10px] rounded-full flex items-center gap-1">
+                            <XCircle size={12} className="text-red-600" /> Ditolak Admin
+                          </span>
+                        )}
+                      </div>
+
+                      <h4 className="font-bold text-slate-900 text-sm">{item.title}</h4>
+                      <p className="text-slate-600 line-clamp-2">{item.criteria}</p>
+
+                      <div className="flex items-center justify-between font-mono font-bold text-emerald-800 pt-1">
+                        <span>Max: Rp {item.budgetMax ? item.budgetMax.toLocaleString("id-ID") : "Budget"}</span>
+                        <span className="text-[11px] text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 flex items-center gap-1">
+                          <Clock size={11} /> Sisa {remDays} Hari Tayang
+                        </span>
+                      </div>
+
+                      {modStatus === "REJECTED" && item.rejectionReason && (
+                        <div className="p-2 bg-red-50 text-red-700 rounded-lg text-[11px] border border-red-200">
+                          <strong>Alasan Penolakan:</strong> {item.rejectionReason}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="pt-3 border-t border-slate-200 flex items-center justify-between gap-2">
+                      <button
+                        onClick={() => setExtendingProject(item)}
+                        className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-emerald-400 font-bold text-[11px] rounded-xl flex items-center gap-1.5 transition-all cursor-pointer shadow-xs"
+                      >
+                        <Calendar size={13} />
+                        <span>Perpanjang Tayang (Rp 500/hari)</span>
+                      </button>
+
+                      <button
+                        onClick={() => handleDelete(item.id)}
+                        className="p-1.5 text-red-600 hover:bg-red-100 rounded-lg cursor-pointer"
+                        title="Hapus Proyek"
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
@@ -300,7 +495,7 @@ export default function DashboardMember({
           <div className="border-b border-slate-200 pb-3">
             <h3 className="text-lg font-black text-slate-900">Pasang & Publikasikan Proyek Baru</h3>
             <p className="text-xs text-slate-500">
-              Isi formulir di bawah ini. Proyek Anda akan langsung tersimpan ke server database central dan tayang untuk publik.
+              Isi formulir di bawah ini. Proyek Anda akan diverifikasi oleh Admin sebelum dipublikasikan di katalog publik (Gratis 10 Hari Pertama).
             </p>
           </div>
 
@@ -308,14 +503,14 @@ export default function DashboardMember({
             {/* Type selector */}
             <div className="space-y-1.5">
               <label className="font-bold text-slate-800 block">Jenis Proyek: <span className="text-red-500">*</span></label>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <button
                   type="button"
                   onClick={() => setProjectType("supply")}
-                  className={`p-3 rounded-xl border text-left font-bold transition-all cursor-pointer ${
+                  className={`p-3.5 rounded-xl border text-left font-bold transition-all cursor-pointer ${
                     projectType === "supply"
-                      ? "bg-amber-500/10 border-amber-500 text-amber-950 font-black"
-                      : "bg-slate-50 border-slate-200 text-slate-600"
+                      ? "bg-amber-500/10 border-amber-500 text-amber-950 font-black shadow-xs"
+                      : "bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100"
                   }`}
                 >
                   <p className="text-xs">📦 Penawaran Barang / Aset (Supply)</p>
@@ -325,10 +520,10 @@ export default function DashboardMember({
                 <button
                   type="button"
                   onClick={() => setProjectType("demand")}
-                  className={`p-3 rounded-xl border text-left font-bold transition-all cursor-pointer ${
+                  className={`p-3.5 rounded-xl border text-left font-bold transition-all cursor-pointer ${
                     projectType === "demand"
-                      ? "bg-emerald-500/10 border-emerald-500 text-emerald-950 font-black"
-                      : "bg-slate-50 border-slate-200 text-slate-600"
+                      ? "bg-emerald-500/10 border-emerald-500 text-emerald-950 font-black shadow-xs"
+                      : "bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100"
                   }`}
                 >
                   <p className="text-xs">💼 Pencarian Buyer Siap (Demand)</p>
@@ -337,6 +532,7 @@ export default function DashboardMember({
               </div>
             </div>
 
+            {/* Title */}
             <div className="space-y-1">
               <label className="font-bold text-slate-800 block">Judul Proyek / Komoditas: <span className="text-red-500">*</span></label>
               <input
@@ -349,6 +545,7 @@ export default function DashboardMember({
               />
             </div>
 
+            {/* Category & Location */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1">
                 <label className="font-bold text-slate-800 block">Kategori Proyek: <span className="text-red-500">*</span></label>
@@ -375,6 +572,7 @@ export default function DashboardMember({
               </div>
             </div>
 
+            {/* Price / Budget */}
             {projectType === "supply" ? (
               <div className="space-y-1">
                 <label className="font-bold text-slate-800 block">Harga Penawaran Total / Per Ton (Rp):</label>
@@ -411,6 +609,7 @@ export default function DashboardMember({
               </div>
             )}
 
+            {/* Specifications / Criteria */}
             <div className="space-y-1">
               <label className="font-bold text-slate-800 block">
                 {projectType === "supply" ? "Spesifikasi & Rincian Barang/Aset:" : "Kriteria Pembelian Buyer:"} <span className="text-red-500">*</span>
@@ -425,6 +624,23 @@ export default function DashboardMember({
               ></textarea>
             </div>
 
+            {/* Payment System */}
+            <div className="space-y-1">
+              <label className="font-bold text-slate-800 block">Sistem Pembayaran Diharapkan:</label>
+              <select
+                value={paymentSystem}
+                onChange={(e) => setPaymentSystem(e.target.value)}
+                className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl font-semibold text-slate-900"
+              >
+                <option value="Cash Bertahap">Cash Bertahap / SKBDN</option>
+                <option value="CBD (Cash Before Delivery)">CBD (Cash Before Delivery)</option>
+                <option value="COD (Cash On Delivery)">COD (Cash On Delivery)</option>
+                <option value="LC / Letter of Credit">LC / Letter of Credit</option>
+                <option value="Transfer Bank Pelunasan Notaris">Transfer Bank Pelunasan Notaris</option>
+              </select>
+            </div>
+
+            {/* Image upload / URL */}
             <div className="space-y-2">
               <label className="font-bold text-slate-800 block">Foto / Gambar Proyek (Opsional):</label>
 
@@ -487,13 +703,14 @@ export default function DashboardMember({
               )}
             </div>
 
+            {/* Submit button */}
             <button
               type="submit"
               disabled={isSubmitting}
               className="px-6 py-3 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black rounded-xl text-xs uppercase tracking-wider shadow-md transition-all cursor-pointer flex items-center justify-center gap-2"
             >
               <PlusCircle size={16} />
-              <span>{isSubmitting ? "Mempublikasikan..." : "Publikasikan Proyek ke Database Server"}</span>
+              <span>{isSubmitting ? "Mempublikasikan..." : "Ajukan Proyek ke Admin Server"}</span>
             </button>
           </form>
         </div>
@@ -509,17 +726,26 @@ export default function DashboardMember({
 
           <div className="space-y-3 text-xs">
             {myInterests.length === 0 ? (
-              <p className="text-slate-500 py-6 text-center">Belum ada riwayat pengajuan minat.</p>
+              <div className="text-center py-10 space-y-2">
+                <Send size={32} className="mx-auto text-slate-300" />
+                <p className="text-slate-500 font-bold">Belum ada riwayat pengajuan minat.</p>
+                <p className="text-slate-400 text-[11px]">Anda dapat mengajukan minat pada proyek yang tayang di katalog publik.</p>
+              </div>
             ) : (
               myInterests.map((item) => (
-                <div key={item.id} className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <h4 className="font-bold text-slate-900">{item.listingTitle}</h4>
-                    <span className="px-2 py-0.5 bg-amber-100 text-amber-800 rounded font-bold text-[10px]">
-                      {item.status}
+                <div key={item.id} className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-2">
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <h4 className="font-bold text-slate-900 text-sm">{item.listingTitle || "Pengajuan Minat Proyek"}</h4>
+                    <span className="px-2.5 py-0.5 bg-amber-100 text-amber-900 border border-amber-300 rounded-full font-bold text-[10px]">
+                      {item.status || "TERKIRIM"}
                     </span>
                   </div>
-                  <p className="text-slate-600">"{item.userMessage}"</p>
+                  <p className="text-slate-700 bg-white p-3 rounded-xl border border-slate-200 italic">
+                    "{item.userMessage || item.message}"
+                  </p>
+                  <p className="text-[10px] text-slate-400 text-right">
+                    Dikirim: {item.createdAt ? new Date(item.createdAt).toLocaleDateString("id-ID") : "Baru saja"}
+                  </p>
                 </div>
               ))
             )}
@@ -529,14 +755,250 @@ export default function DashboardMember({
 
       {/* TAB CONTENT: PROFILE */}
       {activeSubTab === "PROFILE" && (
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-4 max-w-xl text-xs">
-          <h3 className="text-base font-black text-slate-900">Profil & Status Verifikasi NIK Member</h3>
-          <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-2">
-            <p><strong>Nama Lengkap:</strong> {currentUser.fullName}</p>
-            <p><strong>Email:</strong> {currentUser.email}</p>
-            <p><strong>Nomor HP:</strong> {currentUser.phoneNumber}</p>
-            <p><strong>Nomor NIK / KTP:</strong> {currentUser.ktpNumber || "Belum Diisi"}</p>
-            <p><strong>Status KYC:</strong> <span className="font-bold text-emerald-600">{currentUser.kycStatus}</span></p>
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-5 max-w-xl text-xs">
+          <div className="border-b border-slate-200 pb-3">
+            <h3 className="text-base font-black text-slate-900">Profil & Status Verifikasi NIK Member</h3>
+            <p className="text-slate-500 text-[11px]">Informasi identitas akun Anda di database server REJEKI MACAN.</p>
+          </div>
+
+          <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200 space-y-3">
+            <div className="flex items-center justify-between border-b border-slate-200/60 pb-2">
+              <span className="text-slate-500">Nama Lengkap:</span>
+              <strong className="text-slate-900 font-bold text-sm">{currentUser.fullName}</strong>
+            </div>
+            <div className="flex items-center justify-between border-b border-slate-200/60 pb-2">
+              <span className="text-slate-500">Email Terdaftar:</span>
+              <strong className="text-slate-900 font-mono">{currentUser.email}</strong>
+            </div>
+            <div className="flex items-center justify-between border-b border-slate-200/60 pb-2">
+              <span className="text-slate-500">Nomor Handphone / WA:</span>
+              <strong className="text-slate-900 font-mono">{currentUser.phoneNumber}</strong>
+            </div>
+            <div className="flex items-center justify-between border-b border-slate-200/60 pb-2">
+              <span className="text-slate-500">Nomor NIK / KTP:</span>
+              <strong className="text-slate-900 font-mono">{currentUser.ktpNumber || "3171012345670001"}</strong>
+            </div>
+            <div className="flex items-center justify-between border-b border-slate-200/60 pb-2">
+              <span className="text-slate-500">Peran Makelar:</span>
+              <strong className="text-amber-800 bg-amber-100 px-2 py-0.5 rounded font-bold">
+                {currentUser.role === "MAKELAR_BARANG" ? "Broker Penjual (Supplier)" : "Broker Buyer"}
+              </strong>
+            </div>
+            <div className="flex items-center justify-between pt-1">
+              <span className="text-slate-500">Status Verifikasi KYC:</span>
+              <span className={`px-2.5 py-0.5 rounded-md font-black text-[10px] uppercase ${
+                currentUser.kycStatus === "VERIFIED"
+                  ? "bg-emerald-100 text-emerald-800 border border-emerald-300"
+                  : "bg-amber-100 text-amber-800 border border-amber-300"
+              }`}>
+                {currentUser.kycStatus === "VERIFIED" ? "✓ Verified Member" : "KYC Pending"}
+              </span>
+            </div>
+          </div>
+
+          <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-2xl flex items-start gap-2.5">
+            <ShieldCheck size={20} className="text-amber-600 shrink-0 mt-0.5" />
+            <p className="text-amber-900 text-[11px] leading-relaxed">
+              Verifikasi NIK & KYC memberikan lencana <strong>✓ Verified Member</strong> pada setiap proyek dan pengajuan minat Anda, meningkatkan kepercayaan calon mediator & buyer A1 di platform REJEKI MACAN.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: TOP UP DEPOSIT SALDO */}
+      {showTopUpModal && (
+        <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl border border-slate-200 p-6 space-y-5 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="p-2 bg-amber-500/20 text-amber-700 rounded-xl">
+                  <Coins size={20} />
+                </div>
+                <h3 className="font-black text-slate-900 text-base">Top Up Saldo Deposit Iklan</h3>
+              </div>
+              <button
+                onClick={() => setShowTopUpModal(false)}
+                className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleTopUpSubmit} className="space-y-4 text-xs">
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl space-y-1">
+                <p className="font-bold text-amber-900">Aturan Biaya Perpanjangan Iklan:</p>
+                <p className="text-amber-800 text-[11px] leading-relaxed">
+                  Postingan yang disetujui tayang <strong>Gratis 10 Hari Pertama</strong>. Setelah lewat 10 hari, biaya perpanjangan iklan hanya <strong>Rp 500 / hari</strong> yang dipotong dari saldo deposit ini.
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <label className="font-bold text-slate-800 block">Pilih Nominal Top Up Cepat:</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {[10000, 25000, 50000, 100000].map((amt) => (
+                    <button
+                      key={amt}
+                      type="button"
+                      onClick={() => setTopUpAmount(amt)}
+                      className={`p-2.5 rounded-xl border font-bold text-xs font-mono transition-all cursor-pointer ${
+                        topUpAmount === amt
+                          ? "bg-slate-900 text-amber-400 border-slate-900 shadow-sm"
+                          : "bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100"
+                      }`}
+                    >
+                      Rp {amt.toLocaleString("id-ID")}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="font-bold text-slate-800 block">Atau Input Nominal Lain (Rp):</label>
+                <input
+                  type="number"
+                  min="500"
+                  step="500"
+                  value={topUpAmount}
+                  onChange={(e) => setTopUpAmount(Number(e.target.value))}
+                  className="w-full p-3 bg-slate-50 border border-slate-300 rounded-xl font-mono font-bold text-slate-900 text-sm focus:outline-none focus:border-amber-500"
+                  required
+                />
+              </div>
+
+              <div className="pt-2 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowTopUpModal(false)}
+                  className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl cursor-pointer"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  disabled={isTopUpLoading}
+                  className="px-5 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black rounded-xl shadow-md cursor-pointer flex items-center gap-2"
+                >
+                  {isTopUpLoading ? <RefreshCw size={14} className="animate-spin" /> : <Coins size={14} />}
+                  <span>Konfirmasi Top Up</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: PERPANJANG MASA TAYANG PROYEK */}
+      {extendingProject && (
+        <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl border border-slate-200 p-6 space-y-5 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="p-2 bg-slate-900 text-amber-400 rounded-xl">
+                  <Calendar size={20} />
+                </div>
+                <h3 className="font-black text-slate-900 text-base">Perpanjang Masa Tayang Proyek</h3>
+              </div>
+              <button
+                onClick={() => setExtendingProject(null)}
+                className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleExtendSubmit} className="space-y-4 text-xs">
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
+                <span className="text-[10px] font-bold uppercase text-slate-500">Proyek Yang Dibarui:</span>
+                <p className="font-bold text-slate-900 text-xs line-clamp-2">{extendingProject.title}</p>
+                <p className="text-[11px] text-slate-600 font-mono pt-1">
+                  Sisa Tayang Saat Ini: {getRemainingDays(extendingProject.expiresAt)} Hari
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <label className="font-bold text-slate-800 block">Pilih Jumlah Hari Perpanjangan:</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { days: 5, label: "5 Hari (Rp 2.500)" },
+                    { days: 10, label: "10 Hari (Rp 5.000)" },
+                    { days: 30, label: "30 Hari (Rp 15.000)" },
+                    { days: 60, label: "60 Hari (Rp 30.000)" }
+                  ].map((opt) => (
+                    <button
+                      key={opt.days}
+                      type="button"
+                      onClick={() => setExtensionDays(opt.days)}
+                      className={`p-2.5 rounded-xl border font-bold text-xs transition-all cursor-pointer ${
+                        extensionDays === opt.days
+                          ? "bg-amber-500 text-slate-950 border-amber-500 shadow-sm font-black"
+                          : "bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100"
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="font-bold text-slate-800 block">Atau Input Jumlah Hari Lain (Rp 500 / Hari):</label>
+                <input
+                  type="number"
+                  min="1"
+                  value={extensionDays}
+                  onChange={(e) => setExtensionDays(Math.max(1, Number(e.target.value)))}
+                  className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl font-mono font-bold text-slate-900 text-sm focus:outline-none focus:border-amber-500"
+                  required
+                />
+              </div>
+
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl space-y-1 font-mono">
+                <div className="flex items-center justify-between text-slate-700">
+                  <span>Biaya (Rp 500 x {extensionDays} Hari):</span>
+                  <span className="font-bold">Rp {(extensionDays * 500).toLocaleString("id-ID")}</span>
+                </div>
+                <div className="flex items-center justify-between text-slate-900 font-bold border-t border-amber-200/60 pt-1 text-xs">
+                  <span>Saldo Deposit Anda:</span>
+                  <span className={(currentUser.balance || 0) < extensionDays * 500 ? "text-red-600 font-black" : "text-emerald-700 font-black"}>
+                    Rp {(currentUser.balance || 0).toLocaleString("id-ID")}
+                  </span>
+                </div>
+              </div>
+
+              {(currentUser.balance || 0) < extensionDays * 500 && (
+                <div className="p-2.5 bg-red-50 text-red-700 rounded-xl text-[11px] font-bold flex items-center justify-between">
+                  <span>⚠️ Saldo deposit tidak cukup.</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setExtendingProject(null);
+                      setShowTopUpModal(true);
+                    }}
+                    className="underline text-red-800 hover:text-red-950 cursor-pointer"
+                  >
+                    Top Up Saldo Now
+                  </button>
+                </div>
+              )}
+
+              <div className="pt-2 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setExtendingProject(null)}
+                  className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl cursor-pointer"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  disabled={isExtendingLoading}
+                  className="px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-amber-400 font-black rounded-xl shadow-md cursor-pointer flex items-center gap-2"
+                >
+                  {isExtendingLoading ? <RefreshCw size={14} className="animate-spin" /> : <Calendar size={14} />}
+                  <span>Proses Perpanjangan</span>
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

@@ -1,9 +1,9 @@
 import { useState, useEffect } from "react";
 import { 
   Users, CheckCircle2, XCircle, ShieldAlert, FileText, Database, 
-  Trash2, RefreshCw, Send, Check, AlertTriangle, Layers, Building2, UserCheck
+  Trash2, RefreshCw, Send, Check, AlertTriangle, Layers, Building2, UserCheck, Clock, CheckCircle
 } from "lucide-react";
-import { apiGetUsers, apiUpdateUserKYC, apiDeleteUser, apiGetAdminStats, apiDeleteProject, apiGetInterests, apiUpdateInterest } from "../services/api";
+import { apiGetUsers, apiUpdateUserKYC, apiDeleteUser, apiGetAdminStats, apiDeleteProject, apiGetInterests, apiUpdateInterest, apiModerateProject } from "../services/api";
 
 interface DashboardAdminProps {
   supplyListings: any[];
@@ -13,6 +13,7 @@ interface DashboardAdminProps {
 
 export default function DashboardAdmin({ supplyListings, demandListings, onRefreshData }: DashboardAdminProps) {
   const [activeTab, setActiveTab] = useState<"USERS" | "PROJECTS" | "INTERESTS" | "DATABASE">("USERS");
+  const [projectFilter, setProjectFilter] = useState<"ALL" | "PENDING" | "APPROVED" | "REJECTED">("ALL");
 
   const [users, setUsers] = useState<any[]>([]);
   const [interests, setInterests] = useState<any[]>([]);
@@ -42,6 +43,30 @@ export default function DashboardAdmin({ supplyListings, demandListings, onRefre
   useEffect(() => {
     loadData();
   }, []);
+
+  const getRemainingDays = (expiresAtStr: string) => {
+    if (!expiresAtStr) return 0;
+    const expiry = new Date(expiresAtStr).getTime();
+    const now = Date.now();
+    const diff = Math.ceil((expiry - now) / (1000 * 60 * 60 * 24));
+    return diff > 0 ? diff : 0;
+  };
+
+  const handleModerate = async (projectId: string, moderationStatus: "APPROVED" | "REJECTED") => {
+    let rejectionReason = "";
+    if (moderationStatus === "REJECTED") {
+      rejectionReason = prompt("Masukkan alasan penolakan proyek ini:") || "Tidak memenuhi kriteria postingan.";
+    }
+
+    const res = await apiModerateProject(projectId, moderationStatus, rejectionReason);
+    if (res.success) {
+      alert(`Status moderasi proyek berhasil diubah menjadi: ${moderationStatus}`);
+      onRefreshData();
+      loadData();
+    } else {
+      alert(res.message || "Gagal memproses moderasi.");
+    }
+  };
 
   // Handle KYC Update
   const handleUpdateKYC = async (userId: string, status: string) => {
@@ -274,65 +299,209 @@ export default function DashboardAdmin({ supplyListings, demandListings, onRefre
         </div>
       )}
 
-      {/* TAB CONTENT 2: PROJECTS */}
+      {/* TAB CONTENT 2: PROJECTS & MODERATION */}
       {activeTab === "PROJECTS" && (
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden space-y-4 p-4 sm:p-6">
-          <div>
-            <h3 className="text-base font-black text-slate-900">Seluruh Proyek Terdaftar di Server Database</h3>
-            <p className="text-xs text-slate-500">Hapus atau pantau listing penawaran barang dan kebutuhan buyer.</p>
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden space-y-5 p-4 sm:p-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200 pb-3">
+            <div>
+              <h3 className="text-base font-black text-slate-900">Moderasi & Manajemen Proyek (Limit 10 Hari)</h3>
+              <p className="text-xs text-slate-500">
+                Verifikasi postingan baru sebelum tampil di dashboard katalog publik. Setujui atau tolak pengajuan broker.
+              </p>
+            </div>
+
+            {/* Filter Moderasi */}
+            <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl text-xs font-bold self-start sm:self-auto">
+              {[
+                { key: "ALL", label: "Semua" },
+                { key: "PENDING", label: "⏳ Pending" },
+                { key: "APPROVED", label: "✓ Approved" },
+                { key: "REJECTED", label: "✕ Rejected" }
+              ].map((f) => (
+                <button
+                  key={f.key}
+                  onClick={() => setProjectFilter(f.key as any)}
+                  className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+                    projectFilter === f.key
+                      ? "bg-slate-900 text-amber-400 font-black shadow-xs"
+                      : "text-slate-600 hover:text-slate-900"
+                  }`}
+                >
+                  {f.label}
+                </button>
+              ))}
+            </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             {/* Supply Listings */}
             <div className="space-y-3">
-              <h4 className="text-xs font-black uppercase tracking-wider text-amber-700 bg-amber-50 p-2 rounded-lg border border-amber-200">
-                📦 Penawaran Barang ({supplyListings.length})
+              <h4 className="text-xs font-black uppercase tracking-wider text-amber-800 bg-amber-50 p-2.5 rounded-xl border border-amber-200 flex items-center justify-between">
+                <span>📦 Penawaran Barang ({supplyListings.filter(s => projectFilter === "ALL" || (s.moderationStatus || "APPROVED") === projectFilter).length})</span>
               </h4>
-              {supplyListings.map((s) => (
-                <div key={s.id} className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-2 text-xs">
-                  <div className="flex items-start justify-between gap-2">
-                    <h5 className="font-bold text-slate-900">{s.title}</h5>
-                    <button
-                      onClick={() => handleDeleteProject(s.id)}
-                      className="p-1 bg-red-100 text-red-700 rounded hover:bg-red-200 cursor-pointer"
-                      title="Hapus Proyek"
-                    >
-                      <Trash2 size={13} />
-                    </button>
-                  </div>
-                  <p className="text-[11px] text-slate-500">{s.specifications}</p>
-                  <div className="flex items-center justify-between text-[10.5px] font-mono text-slate-600 pt-1 border-t border-slate-200">
-                    <span>Rp {s.price?.toLocaleString("id-ID")}</span>
-                    <span>Broker: {s.brokerName}</span>
-                  </div>
-                </div>
-              ))}
+
+              {supplyListings
+                .filter((s) => projectFilter === "ALL" || (s.moderationStatus || "APPROVED") === projectFilter)
+                .map((s) => {
+                  const modStatus = s.moderationStatus || "APPROVED";
+                  const remDays = getRemainingDays(s.expiresAt);
+                  return (
+                    <div key={s.id} className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-3 text-xs flex flex-col justify-between">
+                      <div className="space-y-2">
+                        <div className="flex items-start justify-between gap-2 flex-wrap">
+                          {modStatus === "PENDING" && (
+                            <span className="px-2 py-0.5 bg-amber-100 text-amber-900 border border-amber-300 font-bold text-[10px] rounded-full flex items-center gap-1">
+                              <Clock size={11} className="text-amber-600 animate-pulse" /> Pending Moderasi
+                            </span>
+                          )}
+                          {modStatus === "APPROVED" && (
+                            <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 border border-emerald-300 font-bold text-[10px] rounded-full flex items-center gap-1">
+                              <CheckCircle2 size={11} className="text-emerald-600" /> Disetujui (Tayang)
+                            </span>
+                          )}
+                          {modStatus === "REJECTED" && (
+                            <span className="px-2 py-0.5 bg-red-100 text-red-800 border border-red-300 font-bold text-[10px] rounded-full flex items-center gap-1">
+                              <XCircle size={11} className="text-red-600" /> Ditolak
+                            </span>
+                          )}
+
+                          <span className="text-[10.5px] font-mono text-amber-800 bg-amber-100/60 px-2 py-0.5 rounded border border-amber-200">
+                            ⏱️ Sisa {remDays} Hari
+                          </span>
+                        </div>
+
+                        <h5 className="font-bold text-slate-900 text-sm">{s.title}</h5>
+                        <p className="text-slate-600 line-clamp-2 text-[11.5px]">{s.specifications}</p>
+                        
+                        <div className="flex items-center justify-between text-[11px] font-mono text-slate-600 pt-1 border-t border-slate-200">
+                          <span className="font-bold text-slate-900">Rp {s.price?.toLocaleString("id-ID")}</span>
+                          <span>Broker: {s.brokerName}</span>
+                        </div>
+
+                        {s.rejectionReason && (
+                          <div className="p-2 bg-red-50 text-red-700 rounded-lg text-[11px] border border-red-200">
+                            <strong>Alasan Penolakan:</strong> {s.rejectionReason}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Moderation Actions */}
+                      <div className="pt-2 border-t border-slate-200 flex items-center justify-between gap-1.5 flex-wrap">
+                        <div className="flex items-center gap-1.5">
+                          {modStatus !== "APPROVED" && (
+                            <button
+                              onClick={() => handleModerate(s.id, "APPROVED")}
+                              className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-[11px] cursor-pointer flex items-center gap-1 shadow-2xs"
+                            >
+                              <CheckCircle2 size={13} /> Setujui
+                            </button>
+                          )}
+                          {modStatus !== "REJECTED" && (
+                            <button
+                              onClick={() => handleModerate(s.id, "REJECTED")}
+                              className="px-2.5 py-1 bg-red-100 hover:bg-red-200 text-red-800 font-bold rounded-lg text-[11px] cursor-pointer flex items-center gap-1"
+                            >
+                              <XCircle size={13} /> Tolak
+                            </button>
+                          )}
+                        </div>
+
+                        <button
+                          onClick={() => handleDeleteProject(s.id)}
+                          className="p-1 bg-slate-200 hover:bg-red-100 text-slate-600 hover:text-red-700 rounded-lg cursor-pointer"
+                          title="Hapus Permanen"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
             </div>
 
             {/* Demand Listings */}
             <div className="space-y-3">
-              <h4 className="text-xs font-black uppercase tracking-wider text-emerald-800 bg-emerald-50 p-2 rounded-lg border border-emerald-200">
-                💼 Pencarian Buyer ({demandListings.length})
+              <h4 className="text-xs font-black uppercase tracking-wider text-emerald-900 bg-emerald-50 p-2.5 rounded-xl border border-emerald-200 flex items-center justify-between">
+                <span>💼 Pencarian Buyer ({demandListings.filter(d => projectFilter === "ALL" || (d.moderationStatus || "APPROVED") === projectFilter).length})</span>
               </h4>
-              {demandListings.map((d) => (
-                <div key={d.id} className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-2 text-xs">
-                  <div className="flex items-start justify-between gap-2">
-                    <h5 className="font-bold text-slate-900">{d.title}</h5>
-                    <button
-                      onClick={() => handleDeleteProject(d.id)}
-                      className="p-1 bg-red-100 text-red-700 rounded hover:bg-red-200 cursor-pointer"
-                      title="Hapus Proyek"
-                    >
-                      <Trash2 size={13} />
-                    </button>
-                  </div>
-                  <p className="text-[11px] text-slate-500">{d.criteria}</p>
-                  <div className="flex items-center justify-between text-[10.5px] font-mono text-slate-600 pt-1 border-t border-slate-200">
-                    <span>Budget Max: Rp {d.budgetMax?.toLocaleString("id-ID")}</span>
-                    <span>Broker: {d.brokerName}</span>
-                  </div>
-                </div>
-              ))}
+
+              {demandListings
+                .filter((d) => projectFilter === "ALL" || (d.moderationStatus || "APPROVED") === projectFilter)
+                .map((d) => {
+                  const modStatus = d.moderationStatus || "APPROVED";
+                  const remDays = getRemainingDays(d.expiresAt);
+                  return (
+                    <div key={d.id} className="p-4 bg-slate-50 rounded-2xl border border-emerald-200 space-y-3 text-xs flex flex-col justify-between">
+                      <div className="space-y-2">
+                        <div className="flex items-start justify-between gap-2 flex-wrap">
+                          {modStatus === "PENDING" && (
+                            <span className="px-2 py-0.5 bg-amber-100 text-amber-900 border border-amber-300 font-bold text-[10px] rounded-full flex items-center gap-1">
+                              <Clock size={11} className="text-amber-600 animate-pulse" /> Pending Moderasi
+                            </span>
+                          )}
+                          {modStatus === "APPROVED" && (
+                            <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 border border-emerald-300 font-bold text-[10px] rounded-full flex items-center gap-1">
+                              <CheckCircle2 size={11} className="text-emerald-600" /> Disetujui (Tayang)
+                            </span>
+                          )}
+                          {modStatus === "REJECTED" && (
+                            <span className="px-2 py-0.5 bg-red-100 text-red-800 border border-red-300 font-bold text-[10px] rounded-full flex items-center gap-1">
+                              <XCircle size={11} className="text-red-600" /> Ditolak
+                            </span>
+                          )}
+
+                          <span className="text-[10.5px] font-mono text-emerald-800 bg-emerald-100/60 px-2 py-0.5 rounded border border-emerald-200">
+                            ⏱️ Sisa {remDays} Hari
+                          </span>
+                        </div>
+
+                        <h5 className="font-bold text-slate-900 text-sm">{d.title}</h5>
+                        <p className="text-slate-600 line-clamp-2 text-[11.5px]">{d.criteria}</p>
+
+                        <div className="flex items-center justify-between text-[11px] font-mono text-slate-600 pt-1 border-t border-slate-200">
+                          <span className="font-bold text-emerald-800">Budget Max: Rp {d.budgetMax?.toLocaleString("id-ID")}</span>
+                          <span>Broker: {d.brokerName}</span>
+                        </div>
+
+                        {d.rejectionReason && (
+                          <div className="p-2 bg-red-50 text-red-700 rounded-lg text-[11px] border border-red-200">
+                            <strong>Alasan Penolakan:</strong> {d.rejectionReason}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Moderation Actions */}
+                      <div className="pt-2 border-t border-slate-200 flex items-center justify-between gap-1.5 flex-wrap">
+                        <div className="flex items-center gap-1.5">
+                          {modStatus !== "APPROVED" && (
+                            <button
+                              onClick={() => handleModerate(d.id, "APPROVED")}
+                              className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-[11px] cursor-pointer flex items-center gap-1 shadow-2xs"
+                            >
+                              <CheckCircle2 size={13} /> Setujui
+                            </button>
+                          )}
+                          {modStatus !== "REJECTED" && (
+                            <button
+                              onClick={() => handleModerate(d.id, "REJECTED")}
+                              className="px-2.5 py-1 bg-red-100 hover:bg-red-200 text-red-800 font-bold rounded-lg text-[11px] cursor-pointer flex items-center gap-1"
+                            >
+                              <XCircle size={13} /> Tolak
+                            </button>
+                          )}
+                        </div>
+
+                        <button
+                          onClick={() => handleDeleteProject(d.id)}
+                          className="p-1 bg-slate-200 hover:bg-red-100 text-slate-600 hover:text-red-700 rounded-lg cursor-pointer"
+                          title="Hapus Permanen"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
             </div>
           </div>
         </div>

@@ -25,6 +25,7 @@ export interface UserSession {
 }
 
 export type ListingStatus = "VERIFIED" | "ON_PROGRESS" | "CLOSED";
+export type ModerationStatus = "PENDING" | "APPROVED" | "REJECTED";
 
 export interface SupplyListing {
   id: string;
@@ -37,9 +38,11 @@ export interface SupplyListing {
   brokerName: string;
   brokerPhone: string;
   status: ListingStatus;
+  moderationStatus?: ModerationStatus; // Status Moderasi Admin: PENDING | APPROVED | REJECTED
+  rejectionReason?: string;
   imageUrl?: string;
   createdAt: string;
-  expiresAt: string; // Expiration timestamp (typically 14 days from createdAt)
+  expiresAt: string; // Expiration timestamp (10 days limit)
   viewsCount: number;
   isPremium?: boolean; // Penanda Iklan Berbayar / Premium
   premiumUntil?: string; // Tanggal kedaluwarsa masa premium
@@ -59,8 +62,10 @@ export interface DemandListing {
   brokerName: string;
   brokerPhone: string;
   status: ListingStatus;
+  moderationStatus?: ModerationStatus; // Status Moderasi Admin: PENDING | APPROVED | REJECTED
+  rejectionReason?: string;
   createdAt: string;
-  expiresAt: string; // Expiration timestamp (typically 14 days from createdAt)
+  expiresAt: string; // Expiration timestamp (10 days limit)
   isPremium?: boolean; // Penanda Iklan Berbayar / Premium
   premiumUntil?: string; // Tanggal kedaluwarsa masa premium
   isSuspicious?: boolean; // Deteksi penyerobotan kontak langsung

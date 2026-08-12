@@ -1,7 +1,7 @@
-import { useState } from "react";
+import React, { useState } from "react";
 import { 
   Building2, Search, Filter, ShieldCheck, CheckCircle2, Flame, MapPin, 
-  Tag, Clock, Eye, ArrowRight, Sparkles, Send, Phone, Lock, ExternalLink, RefreshCw, Layers
+  Tag, Clock, Eye, ArrowRight, Sparkles, Send, Phone, Lock, ExternalLink, RefreshCw, Layers, User
 } from "lucide-react";
 import { SupplyListing, DemandListing, UserSession } from "../types";
 
@@ -52,6 +52,10 @@ export default function HalamanDepan({
   // Filter projects
   const filterList = (items: any[], type: "supply" | "demand") => {
     return items.filter((item) => {
+      // Must be approved by moderation (or status VERIFIED if moderationStatus not set)
+      if (item.moderationStatus && item.moderationStatus !== "APPROVED") {
+        return false;
+      }
       // Category filter
       if (selectedCategory !== "ALL" && item.category !== selectedCategory) {
         return false;

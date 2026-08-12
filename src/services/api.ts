@@ -52,12 +52,14 @@ export async function apiDeleteUser(userId: string) {
   return res.json();
 }
 
-export async function apiGetProjects(params?: { type?: string; category?: string; search?: string; brokerId?: string }) {
+export async function apiGetProjects(params?: { type?: string; category?: string; search?: string; brokerId?: string; publicOnly?: boolean; includeAll?: boolean }) {
   const query = new URLSearchParams();
   if (params?.type) query.append("type", params.type);
   if (params?.category) query.append("category", params.category);
   if (params?.search) query.append("search", params.search);
   if (params?.brokerId) query.append("brokerId", params.brokerId);
+  if (params?.publicOnly) query.append("publicOnly", "true");
+  if (params?.includeAll) query.append("includeAll", "true");
 
   const res = await fetch(`/api/projects?${query.toString()}`);
   return res.json();
@@ -68,6 +70,33 @@ export async function apiCreateProject(projectData: any) {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(projectData)
+  });
+  return res.json();
+}
+
+export async function apiModerateProject(projectId: string, moderationStatus: "APPROVED" | "REJECTED" | "PENDING", rejectionReason?: string) {
+  const res = await fetch(`/api/projects/${projectId}/moderation`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ moderationStatus, rejectionReason })
+  });
+  return res.json();
+}
+
+export async function apiTopUpDeposit(userId: string, amount: number) {
+  const res = await fetch(`/api/users/${userId}/deposit`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ amount })
+  });
+  return res.json();
+}
+
+export async function apiExtendProject(projectId: string, userId: string, days: number) {
+  const res = await fetch(`/api/projects/${projectId}/extend`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ userId, days })
   });
   return res.json();
 }

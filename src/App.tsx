@@ -33,7 +33,7 @@ export default function App() {
     setIsLoading(true);
     try {
       const [projRes, intRes, statsRes] = await Promise.all([
-        apiGetProjects(),
+        apiGetProjects({ includeAll: true }),
         apiGetInterests(),
         apiGetAdminStats()
       ]);
@@ -214,6 +214,7 @@ export default function App() {
                 onCreateProject={handleCreateProject}
                 onDeleteProject={handleDeleteProject}
                 onRefreshData={refreshServerData}
+                onUpdateUserSession={(u) => setCurrentUser(u)}
               />
             ) : (
               <div className="bg-white rounded-3xl p-10 text-center border border-slate-200 shadow-xl max-w-lg mx-auto space-y-4">
