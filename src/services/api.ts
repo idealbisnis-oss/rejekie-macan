@@ -16,11 +16,13 @@ export async function apiLogin(emailOrPhone: string, password: string) {
 
 export async function apiRegister(userData: {
   fullName: string;
+  username?: string;
   email: string;
   phoneNumber: string;
   password: string;
   role?: string;
   ktpNumber?: string;
+  ktpImageUrl?: string;
   organization?: string;
 }) {
   const res = await fetch("/api/auth/register", {
@@ -36,7 +38,7 @@ export async function apiGetUsers() {
   return res.json();
 }
 
-export async function apiUpdateUserKYC(userId: string, data: { kycStatus?: string; ktpNumber?: string; organization?: string }) {
+export async function apiUpdateUserKYC(userId: string, data: { kycStatus?: string; ktpNumber?: string; ktpImageUrl?: string; organization?: string; fullName?: string; username?: string; phoneNumber?: string; role?: string }) {
   const res = await fetch(`/api/users/${userId}/kyc`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
@@ -122,11 +124,38 @@ export async function apiSubmitInterest(projectId: string, interestData: any) {
   return res.json();
 }
 
-export async function apiUpdateInterest(interestId: string, status: string, adminNotes?: string) {
+export async function apiUpdateInterest(
+  interestId: string, 
+  data: {
+    status?: string; 
+    adminNotes?: string; 
+    isContactRevealed?: boolean;
+    ownerBrokerName?: string;
+    interestedBrokerName?: string;
+    listingTitle?: string;
+  } | string,
+  adminNotesParam?: string,
+  isContactRevealedParam?: boolean
+) {
+  const payload = typeof data === "object" ? data : {
+    status: data,
+    adminNotes: adminNotesParam,
+    isContactRevealed: isContactRevealedParam
+  };
+
   const res = await fetch(`/api/interests/${interestId}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ status, adminNotes })
+    body: JSON.stringify(payload)
+  });
+  return res.json();
+}
+
+export async function apiSendInterestChatMessage(interestId: string, chatData: { senderId: string; senderName: string; senderRole: string; message: string }) {
+  const res = await fetch(`/api/interests/${interestId}/chat`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(chatData)
   });
   return res.json();
 }

@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { UserCheck, ShieldAlert, CheckCircle, AlertCircle, RefreshCw, Landmark, HelpCircle, CreditCard } from "lucide-react";
+import React, { useState, useEffect } from "react";
+import { UserCheck, ShieldAlert, CheckCircle, AlertCircle, RefreshCw, Landmark, HelpCircle, CreditCard, Upload, X } from "lucide-react";
 import { UserSession, UserRole, KYCStatus } from "../types";
 import { DEMO_USERS } from "../data/mockData";
 
@@ -13,32 +13,65 @@ interface RegistrationKYCProps {
 export default function RegistrationKYC({ currentUser, onUserChange, onUpdateKYC, productionViewMode = "demo" }: RegistrationKYCProps) {
   const [roleInput, setRoleInput] = useState<UserRole>(currentUser.role);
   const [ktpInput, setKtpInput] = useState(currentUser.ktpNumber || "");
+  const [ktpImageUrlInput, setKtpImageUrlInput] = useState(currentUser.ktpImageUrl || "");
   const [orgInput, setOrgInput] = useState(currentUser.organization || "");
   const [fullNameInput, setFullNameInput] = useState(currentUser.fullName);
+  const [usernameInput, setUsernameInput] = useState(currentUser.username || currentUser.fullName);
   const [phoneNumberInput, setPhoneNumberInput] = useState(currentUser.phoneNumber);
   
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  useEffect(() => {
+    setRoleInput(currentUser.role);
+    setKtpInput(currentUser.ktpNumber || "");
+    setKtpImageUrlInput(currentUser.ktpImageUrl || "");
+    setOrgInput(currentUser.organization || "");
+    setFullNameInput(currentUser.fullName);
+    setUsernameInput(currentUser.username || currentUser.fullName);
+    setPhoneNumberInput(currentUser.phoneNumber);
+  }, [currentUser]);
+
+  const handleKtpFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 10 * 1024 * 1024) {
+        alert("Ukuran foto KTP terlalu besar (Maksimal 10MB).");
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = () => {
+        setKtpImageUrlInput(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
   const handleSubmitKYC = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!ktpInput || ktpInput.length < 16) {
-      alert("Nomor NIK KTP harus terdiri dari 16 karakter angka.");
+    if (!ktpInput || ktpInput.replace(/\D/g, "").length < 16) {
+      alert("Nomor NIK KTP wajib diisi lengkap 16 digit angka.");
+      return;
+    }
+    if (!ktpImageUrlInput) {
+      alert("Wajib mengunggah foto KTP / Identitas resmi untuk verifikasi.");
       return;
     }
     setIsSubmitting(true);
     setTimeout(() => {
       onUpdateKYC(KYCStatus.PENDING, {
         fullName: fullNameInput,
+        username: usernameInput || fullNameInput,
         phoneNumber: phoneNumberInput,
         role: roleInput,
-        ktpNumber: ktpInput,
+        ktpNumber: ktpInput.replace(/\D/g, ""),
+        ktpImageUrl: ktpImageUrlInput,
         organization: orgInput
       });
       setIsSubmitting(false);
       if (productionViewMode === "real_guest") {
-        alert("🎉 REGISTRASI SIMULASI BERHASIL!\n\nDi website real, Admin akan memvalidasi NIK Anda dalam 5 menit.\n\nUntuk menguji alur sebagai broker terverifikasi KYC secara langsung, silakan klik tombol 'Member (Broker)' pada panel hitam 'PILIH PERSPEKTIF TAMPILAN WEBSITE' di bagian paling atas!");
+        alert("🎉 REGISTRASI SIMULASI BERHASIL!\n\nDi website real, Admin akan memvalidasi NIK & Foto KTP Anda dalam 5 menit.\n\nUntuk menguji alur sebagai broker terverifikasi KYC secara langsung, silakan klik tombol 'Member (Broker)' pada panel hitam 'PILIH PERSPEKTIF TAMPILAN WEBSITE' di bagian paling atas!");
       } else {
-        alert("🎉 Berhasil Mengajukan Registrasi!");
+        alert("🎉 Berhasil Mengajukan Registrasi Dokumen KYC!");
       }
     }, 1000);
   };
@@ -108,9 +141,9 @@ export default function RegistrationKYC({ currentUser, onUserChange, onUpdateKYC
           </div>
 
           <form onSubmit={handleSubmitKYC} className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1.5">Nama Lengkap (Sesuai KTP)</label>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">Nama Lengkap (KTP)</label>
                 <input
                   type="text"
                   required
@@ -122,7 +155,22 @@ export default function RegistrationKYC({ currentUser, onUserChange, onUpdateKYC
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1.5">No. WhatsApp Utama (Pembeli & Penjual)</label>
+                <label className="block text-xs font-bold text-amber-900 mb-1.5 flex items-center justify-between">
+                  <span>Username / Nickname:</span>
+                  <span className="text-[10px] text-amber-600 font-bold">🔒 Tampil Publik</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={usernameInput}
+                  onChange={(e) => setUsernameInput(e.target.value)}
+                  placeholder="Contoh: Broker_Hendra"
+                  className="w-full bg-amber-50/30 border border-amber-300 focus:bg-white focus:border-amber-500 focus:outline-none rounded-xl px-3 py-2 text-xs font-bold text-slate-900 transition-colors"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">No. WhatsApp Utama</label>
                 <input
                   type="text"
                   required
@@ -174,15 +222,59 @@ export default function RegistrationKYC({ currentUser, onUserChange, onUpdateKYC
               />
             </div>
 
-            {/* Simulated Selfie Upload Placeholder */}
-            <div className="border border-dashed border-slate-300 rounded-xl p-4 bg-slate-50 flex items-center gap-4">
-              <div className="w-12 h-12 bg-slate-200 hover:bg-slate-300 transition-colors rounded-lg flex items-center justify-center text-slate-500 shrink-0 select-none">
-                <CreditCard size={24} />
-              </div>
-              <div className="space-y-0.5">
-                <p className="text-xs font-bold text-slate-700">Unggah Foto KTP & Selfie Memegang KTP</p>
-                <p className="text-[11px] text-slate-400">Format file PNG/JPG maksimal 5MB. Pastikan wajah dan detail NIK terbaca jelas.</p>
-              </div>
+            {/* UPLOAD FOTO KTP RESMI (WAJIB) */}
+            <div className="space-y-1.5 pt-1">
+              <label className="block text-xs font-bold text-slate-700">
+                Unggah Foto KTP / Identitas Resmi: <span className="text-red-500">*</span>
+              </label>
+
+              {ktpImageUrlInput ? (
+                <div className="p-3 bg-amber-50/70 border border-amber-300 rounded-2xl flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3 overflow-hidden">
+                    <img
+                      src={ktpImageUrlInput}
+                      alt="Foto KTP"
+                      className="w-16 h-12 object-cover rounded-lg border border-amber-400 shrink-0 shadow-xs"
+                    />
+                    <div className="min-w-0">
+                      <p className="text-xs font-bold text-amber-950 flex items-center gap-1">
+                        <CheckCircle size={14} className="text-emerald-600 shrink-0" />
+                        <span>Foto KTP Terlampir</span>
+                      </p>
+                      <p className="text-[10px] text-slate-500 truncate">Foto telah diunggah & siap diverifikasi tim Admin.</p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setKtpImageUrlInput("")}
+                    className="p-1.5 text-slate-400 hover:text-red-600 bg-white rounded-lg border border-slate-200 cursor-pointer shrink-0"
+                    title="Ganti Foto KTP"
+                  >
+                    <X size={15} />
+                  </button>
+                </div>
+              ) : (
+                <label className="border-2 border-dashed border-amber-300 hover:border-amber-500 bg-amber-50/30 hover:bg-amber-50/70 transition-all rounded-2xl p-4 flex flex-col items-center justify-center gap-2 cursor-pointer text-center group">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    required
+                    onChange={handleKtpFileUpload}
+                    className="hidden"
+                  />
+                  <div className="w-10 h-10 bg-amber-100 text-amber-800 group-hover:scale-110 transition-transform rounded-xl flex items-center justify-center">
+                    <Upload size={20} />
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-slate-800">
+                      Pilih / Unggah Foto KTP & Selfie Memegang KTP
+                    </p>
+                    <p className="text-[10.5px] text-slate-500 mt-0.5">
+                      Format PNG/JPG maksimal 10MB. Wajah & detail NIK KTP wajib terbaca.
+                    </p>
+                  </div>
+                </label>
+              )}
             </div>
 
             <div className="pt-3">

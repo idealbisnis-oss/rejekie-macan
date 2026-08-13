@@ -14,11 +14,13 @@ export enum KYCStatus {
 export interface UserSession {
   id: string;
   fullName: string;
+  username?: string; // Username / Nama Panggilan Broker (Public Display Name)
   email: string;
   phoneNumber: string;
   role: UserRole;
   kycStatus: KYCStatus;
   ktpNumber?: string;
+  ktpImageUrl?: string;
   organization?: string;
   registeredAt?: string;
   balance?: number; // Saldo Deposit untuk Fitur Berbayar (e.g. Premium Ads Rp 5.000/hari)

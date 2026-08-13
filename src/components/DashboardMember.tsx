@@ -4,10 +4,11 @@ import {
   Trash2, RefreshCw, Layers, MapPin, Tag, AlertCircle, Sparkles,
   Upload, X, Link as LinkIcon, Image as ImageIcon, Wallet, Clock,
   Calendar, Coins, XCircle, Plus, Info, AlertTriangle, ShieldAlert,
-  QrCode, Building, CreditCard, Copy, Check, FileCheck, ArrowRight, History
+  QrCode, Building, CreditCard, Copy, Check, FileCheck, ArrowRight, History,
+  MessageSquare, Lock, Unlock
 } from "lucide-react";
 import { UserSession, DepositRequest, PaymentMethod } from "../types";
-import { apiTopUpDeposit, apiExtendProject, apiSubmitDeposit, apiGetDeposits } from "../services/api";
+import { apiTopUpDeposit, apiExtendProject, apiSubmitDeposit, apiGetDeposits, apiSendInterestChatMessage } from "../services/api";
 
 interface DashboardMemberProps {
   currentUser: UserSession;
@@ -79,6 +80,91 @@ export default function DashboardMember({
   const [extendingProject, setExtendingProject] = useState<any | null>(null);
   const [extensionDays, setExtensionDays] = useState<number>(10);
   const [isExtendingLoading, setIsExtendingLoading] = useState<boolean>(false);
+
+  // State Member Mediation Chat Modal & Interest Name Editing
+  const [activeChatInterest, setActiveChatInterest] = useState<any | null>(null);
+  const [memberChatMessage, setMemberChatMessage] = useState<string>("");
+  const [editingInterestItem, setEditingInterestItem] = useState<any | null>(null);
+  const [editOwnerName, setEditOwnerName] = useState<string>("");
+  const [editInterestedName, setEditInterestedName] = useState<string>("");
+  const [isSavingInterestName, setIsSavingInterestName] = useState<boolean>(false);
+
+  // State Edit Username Profile
+  const [editUsername, setEditUsername] = useState<string>(currentUser.username || currentUser.fullName);
+  const [isSavingUsername, setIsSavingUsername] = useState<boolean>(false);
+
+  useEffect(() => {
+    setEditUsername(currentUser.username || currentUser.fullName);
+  }, [currentUser]);
+
+  const handleSaveUsername = async () => {
+    if (!editUsername.trim()) return;
+    setIsSavingUsername(true);
+    try {
+      const res = await apiUpdateUserKYC(currentUser.id, { username: editUsername.trim() });
+      if (res.success && res.user) {
+        onUserChange(res.user);
+        alert("✓ Username / Nickname Broker berhasil diperbarui!");
+      } else {
+        alert(res.message || "Gagal memperbarui username.");
+      }
+    } catch (err) {
+      alert("Terjadi kesalahan saat memperbarui username.");
+    } finally {
+      setIsSavingUsername(false);
+    }
+  };
+
+  const handleSaveInterestNames = async () => {
+    if (!editingInterestItem) return;
+    setIsSavingInterestName(true);
+    try {
+      const res = await apiUpdateInterest(editingInterestItem.id, {
+        ownerBrokerName: editOwnerName,
+        interestedBrokerName: editInterestedName
+      });
+      if (res.success && res.interest) {
+        setEditingInterestItem(null);
+        if (activeChatInterest?.id === editingInterestItem.id) {
+          setActiveChatInterest(res.interest);
+        }
+        onRefreshData();
+      } else {
+        alert(res.message || "Gagal memperbarui nama pihak mediasi.");
+      }
+    } catch (err) {
+      alert("Terjadi kesalahan saat memperbarui nama pihak.");
+    } finally {
+      setIsSavingInterestName(false);
+    }
+  };
+
+  const handleSendMemberChatMessage = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!activeChatInterest || !memberChatMessage.trim()) return;
+
+    const isOwner = activeChatInterest.ownerBrokerId === currentUser.id;
+    const role = isOwner ? "OWNER" : "REQUESTER";
+
+    try {
+      const res = await apiSendInterestChatMessage(activeChatInterest.id, {
+        senderId: currentUser.id,
+        senderName: currentUser.username || currentUser.fullName,
+        senderRole: role,
+        message: memberChatMessage.trim()
+      });
+
+      if (res.success && res.interest) {
+        setActiveChatInterest(res.interest);
+        setMemberChatMessage("");
+        onRefreshData();
+      } else if (res.message) {
+        alert(res.message);
+      }
+    } catch (err) {
+      alert("Gagal mengirim pesan chat mediasi.");
+    }
+  };
 
   const categories = [
     "Properti & Tanah",
@@ -296,9 +382,16 @@ export default function DashboardMember({
       </div>
 
       {/* SALDO DEPOSIT & ATURAN POSTING IKLAN CARD */}
-      <div className="bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-slate-900/5 p-5 rounded-2xl border border-amber-500/30 shadow-sm flex flex-col lg:flex-row lg:items-center justify-between gap-5">
+      <div
+        onClick={() => {
+          setTopUpStep(3);
+          setShowTopUpModal(true);
+          loadMyDeposits();
+        }}
+        className="bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-slate-900/5 p-5 rounded-2xl border border-amber-500/30 hover:border-amber-500/70 shadow-sm hover:shadow-md transition-all cursor-pointer group flex flex-col lg:flex-row lg:items-center justify-between gap-5"
+      >
         <div className="flex items-start gap-3.5">
-          <div className="p-3 bg-amber-500 text-slate-950 rounded-2xl shadow-md shrink-0 mt-0.5">
+          <div className="p-3 bg-amber-500 text-slate-950 rounded-2xl shadow-md shrink-0 mt-0.5 group-hover:scale-105 transition-transform">
             <Wallet size={24} />
           </div>
           <div className="space-y-1">
@@ -312,12 +405,35 @@ export default function DashboardMember({
             <p className="text-[11px] text-slate-600 max-w-xl">
               Postingan proyek berlaku <strong>Gratis 10 Hari</strong> setelah disetujui Admin. Setelah 10 hari, biaya perpanjangan iklan hanya <strong>Rp 500 / hari</strong> menggunakan saldo deposit ini.
             </p>
+            <p className="text-[10.5px] font-bold text-amber-700 flex items-center gap-1 pt-0.5">
+              <History size={13} />
+              <span>Klik di sini untuk melihat riwayat mutasi & status deposit Anda →</span>
+            </p>
           </div>
         </div>
 
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 shrink-0">
           <button
-            onClick={() => setShowTopUpModal(true)}
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setTopUpStep(3);
+              setShowTopUpModal(true);
+              loadMyDeposits();
+            }}
+            className="px-3.5 py-2.5 bg-white hover:bg-slate-100 text-slate-800 border border-slate-300 font-bold text-xs rounded-xl shadow-xs transition-all cursor-pointer flex items-center justify-center gap-1.5"
+          >
+            <History size={15} className="text-amber-600" />
+            <span>📜 Riwayat Deposit</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setTopUpStep(1);
+              setShowTopUpModal(true);
+            }}
             className="px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-amber-400 font-black text-xs rounded-xl shadow-md transition-all cursor-pointer flex items-center justify-center gap-2"
           >
             <Coins size={15} />
@@ -771,9 +887,17 @@ export default function DashboardMember({
       {/* TAB CONTENT: MY INTERESTS */}
       {activeSubTab === "INTERESTS" && (
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-4">
-          <div>
-            <h3 className="text-base font-black text-slate-900">Riwayat Pengajuan Minat</h3>
-            <p className="text-xs text-slate-500">Daftar minat yang Anda kirimkan ke proyek lain atau yang diterima proyek Anda.</p>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200 pb-3">
+            <div>
+              <h3 className="text-base font-black text-slate-900">Riwayat Pengajuan Minat & Ruang Chat Mediasi</h3>
+              <p className="text-xs text-slate-500">Seluruh pesan terlindungi oleh Admin. Diskusi kualifikasi berjalan di Ruang Chat Mediasi 3-Arah.</p>
+            </div>
+            <button
+              onClick={onRefreshData}
+              className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl cursor-pointer self-start sm:self-auto flex items-center gap-1.5"
+            >
+              <RefreshCw size={13} /> Refresh Minat
+            </button>
           </div>
 
           <div className="space-y-3 text-xs">
@@ -785,19 +909,62 @@ export default function DashboardMember({
               </div>
             ) : (
               myInterests.map((item) => (
-                <div key={item.id} className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-2">
-                  <div className="flex items-center justify-between gap-2 flex-wrap">
-                    <h4 className="font-bold text-slate-900 text-sm">{item.listingTitle || "Pengajuan Minat Proyek"}</h4>
-                    <span className="px-2.5 py-0.5 bg-amber-100 text-amber-900 border border-amber-300 rounded-full font-bold text-[10px]">
-                      {item.status || "TERKIRIM"}
+                <div key={item.id} className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-3">
+                  <div className="flex items-center justify-between gap-2 flex-wrap border-b border-slate-200 pb-2">
+                    <div>
+                      <span className="text-[10px] font-mono font-bold text-slate-400">ID MINAT: {item.id}</span>
+                      <h4 className="font-bold text-slate-900 text-sm">{item.listingTitle || "Pengajuan Minat Proyek"}</h4>
+                    </div>
+                    <span className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase ${
+                      item.status === "VERIFIED_BY_ADMIN"
+                        ? "bg-emerald-100 text-emerald-800 border border-emerald-300"
+                        : "bg-amber-100 text-amber-800 border border-amber-300"
+                    }`}>
+                      {item.status === "VERIFIED_BY_ADMIN" ? "✓ Mediasi Disetujui Admin" : "⏳ Menunggu Mediasi Admin"}
                     </span>
                   </div>
-                  <p className="text-slate-700 bg-white p-3 rounded-xl border border-slate-200 italic">
-                    "{item.userMessage || item.message}"
-                  </p>
-                  <p className="text-[10px] text-slate-400 text-right">
-                    Dikirim: {item.createdAt ? new Date(item.createdAt).toLocaleDateString("id-ID") : "Baru saja"}
-                  </p>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] text-slate-600 bg-white p-2.5 rounded-xl border border-slate-200 relative">
+                    <div>
+                      <span className="text-slate-400 block text-[10px] font-bold">Pemilik Proyek (Nickname/Nama):</span>
+                      <p className="font-bold text-slate-800">{item.ownerBrokerName}</p>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 block text-[10px] font-bold">Pengaju Minat (Nickname/Nama):</span>
+                      <p className="font-bold text-slate-800">{item.interestedBrokerName}</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingInterestItem(item);
+                        setEditOwnerName(item.ownerBrokerName || "");
+                        setEditInterestedName(item.interestedBrokerName || "");
+                      }}
+                      className="absolute top-2 right-2 text-[10px] font-bold text-amber-700 hover:text-amber-900 bg-amber-50 hover:bg-amber-100 px-2 py-1 rounded-lg border border-amber-300 cursor-pointer flex items-center gap-1 shadow-2xs"
+                    >
+                      ✏️ Ubah Nama Pihak
+                    </button>
+                  </div>
+
+                  <div className="p-3 bg-white rounded-xl border border-slate-200 space-y-1">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase block">Pesan Kualifikasi Anda:</span>
+                    <p className="text-slate-800 font-medium italic">"{item.userMessage || item.message}"</p>
+                  </div>
+
+                  <div className="flex items-center justify-between gap-2 pt-1 border-t border-slate-200">
+                    <button
+                      type="button"
+                      onClick={() => setActiveChatInterest(item)}
+                      className="px-3.5 py-1.5 bg-slate-900 hover:bg-slate-800 text-amber-400 font-bold rounded-xl text-xs cursor-pointer flex items-center gap-1.5 shadow-xs"
+                    >
+                      <MessageSquare size={13} />
+                      <span>💬 Buka Ruang Chat Mediasi ({item.chatMessages?.length || 0} Pesan)</span>
+                    </button>
+
+                    <span className="text-[10px] text-slate-400 font-mono">
+                      {item.createdAt ? new Date(item.createdAt).toLocaleDateString("id-ID") : ""}
+                    </span>
+                  </div>
                 </div>
               ))
             )}
@@ -815,8 +982,30 @@ export default function DashboardMember({
 
           <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200 space-y-3">
             <div className="flex items-center justify-between border-b border-slate-200/60 pb-2">
-              <span className="text-slate-500">Nama Lengkap:</span>
+              <span className="text-slate-500">Nama Lengkap (KTP):</span>
               <strong className="text-slate-900 font-bold text-sm">{currentUser.fullName}</strong>
+            </div>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-200/60 pb-2 gap-2 bg-amber-50/50 p-2.5 rounded-xl border border-amber-200">
+              <div>
+                <span className="text-amber-900 font-bold block text-[11px]">Username / Nickname Broker:</span>
+                <span className="text-[10px] text-amber-700">Nama yang tampil publik di katalog & chat mediasi</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <input
+                  type="text"
+                  value={editUsername}
+                  onChange={(e) => setEditUsername(e.target.value)}
+                  className="px-2.5 py-1 bg-white border border-amber-300 rounded-lg text-xs font-bold text-slate-900 focus:outline-none focus:border-amber-500 w-36"
+                />
+                <button
+                  type="button"
+                  onClick={handleSaveUsername}
+                  disabled={isSavingUsername}
+                  className="px-2.5 py-1 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-[11px] rounded-lg shadow-2xs cursor-pointer"
+                >
+                  {isSavingUsername ? "..." : "Simpan"}
+                </button>
+              </div>
             </div>
             <div className="flex items-center justify-between border-b border-slate-200/60 pb-2">
               <span className="text-slate-500">Email Terdaftar:</span>
@@ -1495,6 +1684,200 @@ export default function DashboardMember({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: RUANG CHAT MEDIASI 3-ARAH MEMBER */}
+      {activeChatInterest && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 p-5 max-w-2xl w-full space-y-4 animate-in zoom-in-95 duration-150 max-h-[90vh] flex flex-col justify-between">
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+              <div className="space-y-0.5">
+                <div className="flex items-center gap-2">
+                  <span className="px-2 py-0.5 bg-slate-900 text-amber-400 text-[10px] font-mono font-bold rounded">
+                    RUANG MEDIASI 3-ARAH
+                  </span>
+                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                    activeChatInterest.isContactRevealed ? "bg-emerald-100 text-emerald-800 border border-emerald-300" : "bg-amber-100 text-amber-900 border border-amber-300"
+                  }`}>
+                    {activeChatInterest.isContactRevealed ? "🔓 Akses Kontak Terbuka Resmi" : "🔒 Disensor Sistem"}
+                  </span>
+                </div>
+                <h3 className="font-black text-slate-900 text-base">{activeChatInterest.listingTitle}</h3>
+                <div className="flex items-center gap-3 text-[11px] text-slate-600 font-bold pt-0.5">
+                  <span>Pemilik: <span className="text-slate-900">{activeChatInterest.ownerBrokerName}</span></span>
+                  <span>|</span>
+                  <span>Pengaju: <span className="text-slate-900">{activeChatInterest.interestedBrokerName}</span></span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingInterestItem(activeChatInterest);
+                      setEditOwnerName(activeChatInterest.ownerBrokerName || "");
+                      setEditInterestedName(activeChatInterest.interestedBrokerName || "");
+                    }}
+                    className="text-[10px] text-amber-700 hover:text-amber-900 bg-amber-50 hover:bg-amber-100 px-2 py-0.5 rounded border border-amber-300 cursor-pointer"
+                  >
+                    ✏️ Edit Nama Pihak
+                  </button>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setActiveChatInterest(null)}
+                className="p-1.5 text-slate-400 hover:text-slate-800 bg-slate-100 rounded-xl cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Protection Notice */}
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded-2xl text-amber-950 text-xs flex items-start gap-2">
+              <ShieldCheck size={18} className="text-amber-600 shrink-0 mt-0.5" />
+              <div className="space-y-0.5 leading-relaxed text-[11px]">
+                <strong className="block text-amber-900 font-bold">Proteksi Mediasi Central:</strong>
+                <span>
+                  Nomor HP, email, & link WA disensor otomatis oleh sistem sampai kualifikasi transaksi disetujui Admin. Admin mendampingi seluruh proses negosiasi.
+                </span>
+              </div>
+            </div>
+
+            {/* Chat Messages */}
+            <div className="flex-1 overflow-y-auto space-y-3 p-3 bg-slate-50 rounded-2xl border border-slate-200 min-h-[260px] max-h-[360px]">
+              {(!activeChatInterest.chatMessages || activeChatInterest.chatMessages.length === 0) ? (
+                <div className="text-center py-12 text-slate-400 text-xs">
+                  Belum ada pesan mediasi. Mulai kirim pesan kualifikasi Anda di bawah.
+                </div>
+              ) : (
+                activeChatInterest.chatMessages.map((msg: any, idx: number) => {
+                  const isMe = msg.senderId === currentUser.id;
+                  const isAdmin = msg.senderRole === "ADMIN";
+                  const isSystem = msg.senderRole === "SYSTEM";
+
+                  if (isSystem) {
+                    return (
+                      <div key={idx} className="text-center my-2">
+                        <span className="inline-block px-3 py-1 bg-amber-500/15 text-amber-900 border border-amber-300 text-[10.5px] font-mono font-bold rounded-full">
+                          🛡️ {msg.message}
+                        </span>
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <div
+                      key={idx}
+                      className={`flex flex-col space-y-1 ${isMe ? "items-end" : "items-start"}`}
+                    >
+                      <div className="flex items-center gap-1.5 text-[10px] text-slate-400 font-bold px-1">
+                        <span>{msg.senderName} ({msg.senderRole})</span>
+                        <span>•</span>
+                        <span>{new Date(msg.createdAt).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}</span>
+                        {msg.hasContactAttempt && (
+                          <span className="text-amber-600 font-extrabold flex items-center gap-0.5 bg-amber-100 px-1.5 py-0.2 rounded">
+                            <Lock size={10} /> Disensor
+                          </span>
+                        )}
+                      </div>
+
+                      <div
+                        className={`p-3 rounded-2xl max-w-md text-xs leading-relaxed font-medium shadow-xs ${
+                          isMe
+                            ? "bg-amber-500 text-slate-950 rounded-tr-xs font-bold"
+                            : isAdmin
+                            ? "bg-slate-900 text-amber-400 border border-amber-500/30 rounded-tl-xs"
+                            : "bg-white text-slate-800 border border-slate-200 rounded-tl-xs"
+                        }`}
+                      >
+                        {msg.message}
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            {/* Input Form */}
+            <form onSubmit={handleSendMemberChatMessage} className="flex items-center gap-2 pt-1">
+              <input
+                type="text"
+                required
+                placeholder="Tuliskan pesan / pertanyaan kualifikasi Anda..."
+                value={memberChatMessage}
+                onChange={(e) => setMemberChatMessage(e.target.value)}
+                className="flex-1 p-3 bg-slate-50 border border-slate-300 focus:border-amber-500 focus:bg-white rounded-xl text-xs font-medium"
+              />
+              <button
+                type="submit"
+                className="px-4 py-3 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black rounded-xl cursor-pointer text-xs flex items-center gap-1.5 shadow"
+              >
+                <Send size={13} />
+                <span>Kirim Pesan</span>
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: UBAH NAMA PIHAK MEDIASI (USERNAME / NICKNAME) */}
+      {editingInterestItem && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 p-6 max-w-md w-full space-y-4 animate-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+              <div>
+                <h3 className="font-black text-slate-900 text-base">Ubah Nama Pihak Mediasi</h3>
+                <p className="text-xs text-slate-500">Ubah penamaan Pemilik Proyek & Pengaju Minat menjadi Username / Nickname.</p>
+              </div>
+              <button
+                onClick={() => setEditingInterestItem(null)}
+                className="p-1 text-slate-400 hover:text-slate-700 bg-slate-100 rounded-lg cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Nama / Username Pemilik Proyek:</label>
+                <input
+                  type="text"
+                  value={editOwnerName}
+                  onChange={(e) => setEditOwnerName(e.target.value)}
+                  placeholder="Contoh: Hendra_A1 / Broker_Hendra"
+                  className="w-full p-2.5 bg-slate-50 border border-slate-300 focus:border-amber-500 focus:bg-white rounded-xl font-bold text-slate-900"
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Nama / Username Pengaju Minat:</label>
+                <input
+                  type="text"
+                  value={editInterestedName}
+                  onChange={(e) => setEditInterestedName(e.target.value)}
+                  placeholder="Contoh: Amiruddin_Broker / Amir_Property"
+                  className="w-full p-2.5 bg-slate-50 border border-slate-300 focus:border-amber-500 focus:bg-white rounded-xl font-bold text-slate-900"
+                />
+              </div>
+            </div>
+
+            <div className="pt-2 flex items-center justify-end gap-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setEditingInterestItem(null)}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs cursor-pointer"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveInterestNames}
+                disabled={isSavingInterestName}
+                className="px-5 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black rounded-xl text-xs shadow-md cursor-pointer flex items-center gap-1.5"
+              >
+                {isSavingInterestName ? "Menyimpan..." : "✓ Simpan Perubahan"}
+              </button>
+            </div>
           </div>
         </div>
       )}

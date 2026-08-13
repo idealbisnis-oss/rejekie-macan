@@ -11,7 +11,7 @@ interface HalamanDepanProps {
   currentUser: UserSession | null;
   onNavigateAuth: () => void;
   onNavigateMemberDashboard: () => void;
-  onSubmitInterest: (projectId: string, data: any) => Promise<boolean>;
+  onSubmitInterest: (projectId: string, data: any) => Promise<any>;
   onRefreshData: () => void;
   isLoading: boolean;
   systemStats: any;
@@ -92,7 +92,7 @@ export default function HalamanDepan({
     if (!interestProject) return;
 
     setIsSubmittingInterest(true);
-    const success = await onSubmitInterest(interestProject.id, {
+    const res = await onSubmitInterest(interestProject.id, {
       listingType: interestProject.type,
       listingTitle: interestProject.title,
       ownerBrokerId: interestProject.brokerId,
@@ -104,9 +104,16 @@ export default function HalamanDepan({
     });
 
     setIsSubmittingInterest(false);
-    if (success) {
-      alert("🎉 Pengajuan minat Anda berhasil tersimpan ke Server Database!\n\nAdmin platform akan memverifikasi kesiapan kualifikasi Anda sebelum menyambungkan ke pemilik proyek.");
+    if (res?.success) {
+      alert(`🎉 ${res.message || "Pengajuan minat Anda berhasil dicatat!\n\nAdmin platform akan memverifikasi kesiapan kualifikasi di Ruang Chat Mediasi."}`);
       setInterestProject(null);
+    } else if (res?.message) {
+      alert(res.message);
+      if (res.message.includes("KYC") || res.message.includes("Saldo")) {
+        onNavigateMemberDashboard();
+      }
+    } else {
+      alert("Terjadi kesalahan saat mengajukan minat. Silakan coba lagi.");
     }
   };
 
@@ -544,8 +551,14 @@ export default function HalamanDepan({
 
             <div className="space-y-3 text-xs">
               <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 space-y-1">
-                <p className="text-slate-500">Pengaju Minat: <strong className="text-slate-800">{currentUser?.fullName}</strong> ({currentUser?.phoneNumber})</p>
+                <div className="flex items-center justify-between text-slate-500">
+                  <span>Pengaju Minat (Nickname): <strong className="text-slate-800">{currentUser?.username || currentUser?.fullName}</strong></span>
+                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${currentUser?.kycStatus === "VERIFIED" ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"}`}>
+                    KYC: {currentUser?.kycStatus || "UNVERIFIED"}
+                  </span>
+                </div>
                 <p className="text-slate-500">Pemilik Proyek: <strong className="text-slate-800">{interestProject.brokerName}</strong></p>
+                <p className="text-slate-500">Saldo Saldo Deposit: <strong className="text-emerald-700">Rp {(currentUser?.balance || 0).toLocaleString("id-ID")}</strong></p>
               </div>
 
               <div className="space-y-1.5">
@@ -560,11 +573,25 @@ export default function HalamanDepan({
                   onChange={(e) => setInterestMessage(e.target.value)}
                   className="w-full p-3 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-800 focus:outline-none focus:border-amber-500 focus:bg-white"
                 ></textarea>
+
+                {/* Real-time contact detection indicator */}
+                {/(?:\+?62|0)[2-9]\d{6,}|wa\.me|whatsapp|t\.me|@|\.com|\.id|08\d+/i.test(interestMessage) && (
+                  <div className="p-2.5 bg-amber-50 text-amber-900 rounded-xl border border-amber-300 text-[11px] font-medium flex items-center gap-2">
+                    <span className="text-amber-600 font-bold">🔒 Sensor Otomatis:</span>
+                    <span>Nomor HP/Link kontak dalam teks Anda akan disensor otomatis oleh sistem agar transaksi terproteksi lewat Admin.</span>
+                  </div>
+                )}
               </div>
 
-              <p className="text-[10.5px] text-slate-500 leading-normal bg-amber-50/60 p-2.5 rounded-lg border border-amber-200/60">
-                🔒 Data minat Anda akan langsung tersimpan ke database server central. Admin akan memverifikasi kesiapan transaksi sebelum menyambungkan langsung kontak broker terkait.
-              </p>
+              <div className="p-2.5 rounded-xl bg-slate-900 text-slate-300 space-y-1 text-[11px]">
+                <div className="flex items-center justify-between font-bold text-amber-400">
+                  <span>Sistem Mediasi Rejeki Macan</span>
+                  <span>Biaya Komitmen: Rp 5.000</span>
+                </div>
+                <p className="text-slate-400 text-[10.5px]">
+                  🔒 Pengajuan ini memotong biaya komitmen deposit Rp 5.000 untuk mencegah spamming. Seluruh komunikasi difasilitasi oleh Admin Central.
+                </p>
+              </div>
             </div>
 
             <div className="flex items-center justify-end gap-2 pt-2">

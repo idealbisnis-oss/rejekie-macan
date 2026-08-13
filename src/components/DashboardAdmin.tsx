@@ -1,13 +1,13 @@
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { 
   Users, CheckCircle2, XCircle, ShieldAlert, FileText, Database, 
   Trash2, RefreshCw, Send, Check, AlertTriangle, Layers, Building2, UserCheck, Clock, CheckCircle,
-  Coins, Eye, QrCode, Building, ExternalLink
+  Coins, Eye, QrCode, Building, ExternalLink, History, MessageSquare, Lock, Unlock, ShieldCheck
 } from "lucide-react";
 import { 
   apiGetUsers, apiUpdateUserKYC, apiDeleteUser, apiGetAdminStats, 
   apiDeleteProject, apiGetInterests, apiUpdateInterest, apiModerateProject,
-  apiGetDeposits, apiApproveDeposit, apiRejectDeposit
+  apiGetDeposits, apiApproveDeposit, apiRejectDeposit, apiSendInterestChatMessage
 } from "../services/api";
 
 interface DashboardAdminProps {
@@ -50,32 +50,136 @@ export default function DashboardAdmin({ supplyListings, demandListings, onRefre
     }
   };
 
-  // Deposit Approval Handlers
-  const handleApproveDeposit = async (id: string, amount: number, userName: string) => {
-    if (!confirm(`Setujui deposit sebesar Rp ${amount.toLocaleString("id-ID")} untuk ${userName}? Saldo user akan otomatis bertambah.`)) {
-      return;
-    }
-    const res = await apiApproveDeposit(id);
-    if (res.success) {
-      alert(res.message || "Deposit berhasil disetujui!");
-      loadData();
-      onRefreshData();
-    } else {
-      alert(res.message || "Gagal menyetujui deposit.");
+  // Action Modals & Notification State
+  const [approveDepositTarget, setApproveDepositTarget] = useState<any | null>(null);
+  const [rejectDepositTarget, setRejectDepositTarget] = useState<any | null>(null);
+  const [depositRejectReason, setDepositRejectReason] = useState<string>("Bukti transfer tidak valid atau dana belum masuk ke rekening.");
+
+  const [rejectProjectTarget, setRejectProjectTarget] = useState<string | null>(null);
+  const [projectRejectReason, setProjectRejectReason] = useState<string>("Spesifikasi postingan belum memenuhi kriteria kelengkapan.");
+
+  const [deleteUserTarget, setDeleteUserTarget] = useState<any | null>(null);
+  const [deleteProjectTarget, setDeleteProjectTarget] = useState<any | null>(null);
+  const [selectedMemberForDepositHistory, setSelectedMemberForDepositHistory] = useState<any | null>(null);
+  const [previewKtpUser, setPreviewKtpUser] = useState<any | null>(null);
+
+  // Admin Mediation Chat State
+  const [activeChatInterest, setActiveChatInterest] = useState<any | null>(null);
+  const [adminChatMessage, setAdminChatMessage] = useState<string>("");
+
+  // Edit Interest Parties State
+  const [editingInterestItem, setEditingInterestItem] = useState<any | null>(null);
+  const [editOwnerName, setEditOwnerName] = useState<string>("");
+  const [editInterestedName, setEditInterestedName] = useState<string>("");
+  const [isSavingInterestName, setIsSavingInterestName] = useState<boolean>(false);
+
+  const handleSaveInterestNames = async () => {
+    if (!editingInterestItem) return;
+    setIsSavingInterestName(true);
+    try {
+      const res = await apiUpdateInterest(editingInterestItem.id, {
+        ownerBrokerName: editOwnerName,
+        interestedBrokerName: editInterestedName
+      });
+      if (res.success && res.interest) {
+        setEditingInterestItem(null);
+        if (activeChatInterest?.id === editingInterestItem.id) {
+          setActiveChatInterest(res.interest);
+        }
+        showToast("✓ Nama pihak mediasi berhasil diperbarui!");
+        loadData();
+      } else {
+        showToast(res.message || "Gagal memperbarui nama pihak mediasi.", "error");
+      }
+    } catch (err) {
+      showToast("Terjadi kesalahan saat memperbarui nama pihak.", "error");
+    } finally {
+      setIsSavingInterestName(false);
     }
   };
 
-  const handleRejectDeposit = async (id: string, userName: string) => {
-    const reason = prompt(`Masukkan alasan penolakan deposit untuk ${userName}:`, "Bukti transfer tidak valid atau belum masuk.");
-    if (reason === null) return;
+  const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
+  const [isSubmittingAction, setIsSubmittingAction] = useState<boolean>(false);
 
-    const res = await apiRejectDeposit(id, reason);
-    if (res.success) {
-      alert(res.message || "Deposit berhasil ditolak.");
-      loadData();
-      onRefreshData();
-    } else {
-      alert(res.message || "Gagal menolak deposit.");
+  const showToast = (msg: string, type: "success" | "error" = "success") => {
+    setToast({ message: msg, type });
+    setTimeout(() => setToast(null), 4000);
+  };
+
+  const handleSendAdminChatMessage = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!activeChatInterest || !adminChatMessage.trim()) return;
+
+    try {
+      const res = await apiSendInterestChatMessage(activeChatInterest.id, {
+        senderId: "admin",
+        senderName: "Admin Central Platform",
+        senderRole: "ADMIN",
+        message: adminChatMessage.trim()
+      });
+
+      if (res.success && res.interest) {
+        setActiveChatInterest(res.interest);
+        setAdminChatMessage("");
+        loadData();
+      }
+    } catch (err) {
+      showToast("Gagal mengirim pesan mediasi admin.", "error");
+    }
+  };
+
+  const handleToggleRevealContact = async (interestId: string, currentStatus: boolean) => {
+    try {
+      const res = await apiUpdateInterest(interestId, undefined as any, undefined, !currentStatus);
+      if (res.success && res.interest) {
+        setActiveChatInterest(res.interest);
+        showToast(!currentStatus ? "🔓 Kontak resmi berhasil dibuka untuk kedua belah pihak!" : "🔒 Kontak resmi kembali disensor.");
+        loadData();
+      }
+    } catch (err) {
+      showToast("Gagal memperbarui status akses kontak.", "error");
+    }
+  };
+
+  // Deposit Approval Execution
+  const executeApproveDeposit = async () => {
+    if (!approveDepositTarget) return;
+    setIsSubmittingAction(true);
+    try {
+      const res = await apiApproveDeposit(approveDepositTarget.id);
+      if (res.success) {
+        showToast(res.message || "Deposit berhasil disetujui! Saldo member telah bertambah.");
+        setApproveDepositTarget(null);
+        await loadData();
+        onRefreshData();
+      } else {
+        showToast(res.message || "Gagal menyetujui deposit.", "error");
+      }
+    } catch (err) {
+      showToast("Terjadi kesalahan jaringan saat menyetujui deposit.", "error");
+    } finally {
+      setIsSubmittingAction(false);
+    }
+  };
+
+  // Deposit Rejection Execution
+  const executeRejectDeposit = async () => {
+    if (!rejectDepositTarget) return;
+    setIsSubmittingAction(true);
+    try {
+      const res = await apiRejectDeposit(rejectDepositTarget.id, depositRejectReason);
+      if (res.success) {
+        showToast(res.message || "Deposit telah ditolak.");
+        setRejectDepositTarget(null);
+        await loadData();
+        onRefreshData();
+      } else {
+        showToast(res.message || "Gagal menolak deposit.", "error");
+      }
+    } catch (err) {
+      showToast("Terjadi kesalahan jaringan saat menolak deposit.", "error");
+    } finally {
+      setIsSubmittingAction(false);
     }
   };
 
@@ -91,19 +195,32 @@ export default function DashboardAdmin({ supplyListings, demandListings, onRefre
     return diff > 0 ? diff : 0;
   };
 
-  const handleModerate = async (projectId: string, moderationStatus: "APPROVED" | "REJECTED") => {
-    let rejectionReason = "";
-    if (moderationStatus === "REJECTED") {
-      rejectionReason = prompt("Masukkan alasan penolakan proyek ini:") || "Tidak memenuhi kriteria postingan.";
-    }
-
-    const res = await apiModerateProject(projectId, moderationStatus, rejectionReason);
+  // Moderate Project Handler
+  const handleApproveProject = async (projectId: string) => {
+    setIsSubmittingAction(true);
+    const res = await apiModerateProject(projectId, "APPROVED", "");
+    setIsSubmittingAction(false);
     if (res.success) {
-      alert(`Status moderasi proyek berhasil diubah menjadi: ${moderationStatus}`);
+      showToast("Proyek disetujui dan kini tayang di katalog publik!");
       onRefreshData();
       loadData();
     } else {
-      alert(res.message || "Gagal memproses moderasi.");
+      showToast(res.message || "Gagal menyetujui proyek.", "error");
+    }
+  };
+
+  const executeRejectProject = async () => {
+    if (!rejectProjectTarget) return;
+    setIsSubmittingAction(true);
+    const res = await apiModerateProject(rejectProjectTarget, "REJECTED", projectRejectReason);
+    setIsSubmittingAction(false);
+    if (res.success) {
+      showToast("Proyek ditolak.");
+      setRejectProjectTarget(null);
+      onRefreshData();
+      loadData();
+    } else {
+      showToast(res.message || "Gagal menolak proyek.", "error");
     }
   };
 
@@ -111,31 +228,41 @@ export default function DashboardAdmin({ supplyListings, demandListings, onRefre
   const handleUpdateKYC = async (userId: string, status: string) => {
     const res = await apiUpdateUserKYC(userId, { kycStatus: status });
     if (res.success) {
-      alert(`Status KYC user berhasil diubah menjadi: ${status}`);
+      showToast(`Status KYC member diubah menjadi: ${status}`);
       loadData();
     } else {
-      alert("Gagal memperbarui status KYC.");
+      showToast("Gagal memperbarui status KYC.", "error");
     }
   };
 
-  // Handle Delete User
-  const handleDeleteUser = async (userId: string) => {
-    if (!confirm("Apakah Anda yakin ingin menghapus user ini dari database server?")) return;
-    const res = await apiDeleteUser(userId);
+  // Delete User Execution
+  const executeDeleteUser = async () => {
+    if (!deleteUserTarget) return;
+    setIsSubmittingAction(true);
+    const res = await apiDeleteUser(deleteUserTarget.id);
+    setIsSubmittingAction(false);
     if (res.success) {
-      alert("User berhasil dihapus.");
+      showToast("User berhasil dihapus dari database server.");
+      setDeleteUserTarget(null);
       loadData();
+    } else {
+      showToast("Gagal menghapus user.", "error");
     }
   };
 
-  // Handle Delete Project
-  const handleDeleteProject = async (projectId: string) => {
-    if (!confirm("Apakah Anda yakin ingin menghapus proyek ini dari database server?")) return;
-    const res = await apiDeleteProject(projectId);
+  // Delete Project Execution
+  const executeDeleteProject = async () => {
+    if (!deleteProjectTarget) return;
+    setIsSubmittingAction(true);
+    const res = await apiDeleteProject(deleteProjectTarget.id);
+    setIsSubmittingAction(false);
     if (res.success) {
-      alert("Proyek berhasil dihapus.");
+      showToast("Proyek berhasil dihapus.");
+      setDeleteProjectTarget(null);
       onRefreshData();
       loadData();
+    } else {
+      showToast("Gagal menghapus proyek.", "error");
     }
   };
 
@@ -177,42 +304,83 @@ export default function DashboardAdmin({ supplyListings, demandListings, onRefre
         </button>
       </div>
 
-      {/* Stats Cards */}
+      {/* Stats Cards (Interactive Columns) */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <div className="bg-white p-4 rounded-2xl border border-amber-200 shadow-sm">
-          <span className="text-[10px] font-bold uppercase text-amber-700 tracking-wider">Deposit Pending</span>
+        <div
+          onClick={() => {
+            setActiveTab("DEPOSITS");
+            setDepositFilter("PENDING");
+          }}
+          className="bg-white hover:bg-amber-50/50 p-4 rounded-2xl border border-amber-300 hover:border-amber-500 shadow-sm hover:shadow-md transition-all cursor-pointer group"
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-bold uppercase text-amber-700 tracking-wider">Deposit Pending</span>
+            <Coins size={15} className="text-amber-500 group-hover:scale-110 transition-transform" />
+          </div>
           <p className="text-2xl font-black text-amber-600 font-mono mt-1">
             {deposits.filter(d => d.status === "PENDING").length} Permintaan
           </p>
-          <p className="text-[10px] text-slate-500 mt-1">Total: {deposits.length} Deposit</p>
+          <div className="flex items-center justify-between text-[10px] text-slate-500 mt-1 pt-1 border-t border-amber-100">
+            <span>Total: {deposits.length} Deposit</span>
+            <span className="font-bold text-amber-800 group-hover:underline">Buka Historis →</span>
+          </div>
         </div>
 
-        <div className="bg-white p-4 rounded-2xl border border-emerald-200 shadow-sm">
-          <span className="text-[10px] font-bold uppercase text-emerald-800 tracking-wider">Total Proyek Aktif</span>
+        <div
+          onClick={() => {
+            setActiveTab("PROJECTS");
+            setProjectFilter("ALL");
+          }}
+          className="bg-white hover:bg-emerald-50/50 p-4 rounded-2xl border border-emerald-300 hover:border-emerald-500 shadow-sm hover:shadow-md transition-all cursor-pointer group"
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-bold uppercase text-emerald-800 tracking-wider">Total Proyek Aktif</span>
+            <Building2 size={15} className="text-emerald-600 group-hover:scale-110 transition-transform" />
+          </div>
           <p className="text-2xl font-black text-emerald-600 font-mono mt-1">
             {(stats?.totalSupplyProjects || supplyListings.length) + (stats?.totalDemandProjects || demandListings.length)}
           </p>
-          <p className="text-[10px] text-slate-500 mt-1">Suplai & Demand Listing</p>
-        </div>
-
-        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
-          <span className="text-[10px] font-bold uppercase text-slate-400 tracking-wider">Member Terdaftar</span>
-          <p className="text-2xl font-black text-slate-900 font-mono mt-1">{stats?.totalMembers || users.length} Member</p>
-          <p className="text-[10px] text-slate-500 mt-1">Pending KYC: {stats?.pendingKYC || 0}</p>
-        </div>
-
-        <div className="bg-slate-900 p-4 rounded-2xl border border-slate-800 shadow-sm text-white flex flex-col justify-center">
-          <div className="flex items-center gap-1.5 text-emerald-400">
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping"></span>
-            <span className="text-xs font-black font-mono">DATABASE ONLINE</span>
+          <div className="flex items-center justify-between text-[10px] text-slate-500 mt-1 pt-1 border-t border-emerald-100">
+            <span>Suplai & Demand</span>
+            <span className="font-bold text-emerald-800 group-hover:underline">Buka Proyek →</span>
           </div>
-          <p className="text-[10px] text-slate-400 mt-1 font-mono">Deposit Auto-Credit Active</p>
+        </div>
+
+        <div
+          onClick={() => setActiveTab("USERS")}
+          className="bg-white hover:bg-slate-100/80 p-4 rounded-2xl border border-slate-300 hover:border-slate-500 shadow-sm hover:shadow-md transition-all cursor-pointer group"
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-bold uppercase text-slate-500 tracking-wider">Member Terdaftar</span>
+            <Users size={15} className="text-slate-600 group-hover:scale-110 transition-transform" />
+          </div>
+          <p className="text-2xl font-black text-slate-900 font-mono mt-1">{stats?.totalMembers || users.length} Member</p>
+          <div className="flex items-center justify-between text-[10px] text-slate-500 mt-1 pt-1 border-t border-slate-200">
+            <span>Pending KYC: {stats?.pendingKYC || 0}</span>
+            <span className="font-bold text-slate-900 group-hover:underline">Kelola Member →</span>
+          </div>
+        </div>
+
+        <div
+          onClick={() => setActiveTab("INTERESTS")}
+          className="bg-slate-900 hover:bg-slate-800 p-4 rounded-2xl border border-slate-800 shadow-sm hover:shadow-md text-white transition-all cursor-pointer group flex flex-col justify-between"
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-bold uppercase text-amber-400 tracking-wider">Matchmaking Minat</span>
+            <Send size={15} className="text-amber-400 group-hover:scale-110 transition-transform" />
+          </div>
+          <p className="text-2xl font-black text-amber-400 font-mono mt-1">{interests.length} Pengajuan</p>
+          <div className="flex items-center justify-between text-[10px] text-slate-400 mt-1 pt-1 border-t border-slate-800">
+            <span>Verifikasi Broker</span>
+            <span className="font-bold text-amber-400 group-hover:underline">Buka Minat →</span>
+          </div>
         </div>
       </div>
 
       {/* Admin Tab Nav */}
       <div className="bg-white p-2 rounded-2xl border border-slate-200 shadow-sm flex flex-wrap gap-2 text-xs font-bold">
         <button
+          type="button"
           onClick={() => setActiveTab("DEPOSITS")}
           className={`px-4 py-2 rounded-xl transition-all cursor-pointer flex items-center gap-2 ${
             activeTab === "DEPOSITS" ? "bg-amber-500 text-slate-950 font-black shadow-sm" : "text-slate-600 hover:text-slate-900"
@@ -223,6 +391,7 @@ export default function DashboardAdmin({ supplyListings, demandListings, onRefre
         </button>
 
         <button
+          type="button"
           onClick={() => setActiveTab("USERS")}
           className={`px-4 py-2 rounded-xl transition-all cursor-pointer flex items-center gap-2 ${
             activeTab === "USERS" ? "bg-slate-900 text-white shadow-sm" : "text-slate-600 hover:text-slate-900"
@@ -233,6 +402,7 @@ export default function DashboardAdmin({ supplyListings, demandListings, onRefre
         </button>
 
         <button
+          type="button"
           onClick={() => setActiveTab("PROJECTS")}
           className={`px-4 py-2 rounded-xl transition-all cursor-pointer flex items-center gap-2 ${
             activeTab === "PROJECTS" ? "bg-slate-900 text-white shadow-sm" : "text-slate-600 hover:text-slate-900"
@@ -243,6 +413,7 @@ export default function DashboardAdmin({ supplyListings, demandListings, onRefre
         </button>
 
         <button
+          type="button"
           onClick={() => setActiveTab("INTERESTS")}
           className={`px-4 py-2 rounded-xl transition-all cursor-pointer flex items-center gap-2 ${
             activeTab === "INTERESTS" ? "bg-slate-900 text-white shadow-sm" : "text-slate-600 hover:text-slate-900"
@@ -253,6 +424,7 @@ export default function DashboardAdmin({ supplyListings, demandListings, onRefre
         </button>
 
         <button
+          type="button"
           onClick={() => setActiveTab("DATABASE")}
           className={`px-4 py-2 rounded-xl transition-all cursor-pointer flex items-center gap-2 ${
             activeTab === "DATABASE" ? "bg-slate-900 text-white shadow-sm" : "text-slate-600 hover:text-slate-900"
@@ -386,7 +558,7 @@ export default function DashboardAdmin({ supplyListings, demandListings, onRefre
                         {dep.status === "PENDING" && (
                           <div className="flex items-center gap-2 w-full sm:w-auto">
                             <button
-                              onClick={() => handleApproveDeposit(dep.id, dep.amount, dep.senderName || userDetail?.fullName || "Member")}
+                              onClick={() => setApproveDepositTarget(dep)}
                               className="flex-1 sm:flex-initial px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs rounded-xl shadow-md cursor-pointer flex items-center justify-center gap-1.5 transition-all"
                             >
                               <CheckCircle2 size={16} />
@@ -394,7 +566,10 @@ export default function DashboardAdmin({ supplyListings, demandListings, onRefre
                             </button>
 
                             <button
-                              onClick={() => handleRejectDeposit(dep.id, dep.senderName || userDetail?.fullName || "Member")}
+                              onClick={() => {
+                                setRejectDepositTarget(dep);
+                                setDepositRejectReason("Bukti transfer tidak valid atau dana belum masuk ke rekening.");
+                              }}
                               className="flex-1 sm:flex-initial px-3 py-2.5 bg-red-100 hover:bg-red-200 text-red-700 font-bold text-xs rounded-xl cursor-pointer flex items-center justify-center gap-1 transition-all"
                             >
                               <XCircle size={16} />
@@ -429,71 +604,96 @@ export default function DashboardAdmin({ supplyListings, demandListings, onRefre
                   <th className="p-3">Email & WhatsApp</th>
                   <th className="p-3">Peran Broker</th>
                   <th className="p-3">NIK / KTP & PT</th>
+                  <th className="p-3">Saldo Deposit</th>
                   <th className="p-3">Status KYC</th>
                   <th className="p-3 text-right">Aksi Verifikasi</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200">
-                {users.map((u) => (
-                  <tr key={u.id} className="hover:bg-slate-50/80 transition-colors">
-                    <td className="p-3 font-bold text-slate-900">
-                      {u.fullName}
-                      {u.role === "ADMIN" && (
-                        <span className="ml-2 px-2 py-0.5 bg-amber-500 text-slate-950 font-black text-[9px] rounded">
-                          ADMIN
+                {users.map((u) => {
+                  const userDeps = deposits.filter(d => d.userId === u.id);
+                  return (
+                    <tr key={u.id} className="hover:bg-slate-50/80 transition-colors">
+                      <td className="p-3 font-bold text-slate-900">
+                        {u.fullName}
+                        {u.role === "ADMIN" && (
+                          <span className="ml-2 px-2 py-0.5 bg-amber-500 text-slate-950 font-black text-[9px] rounded">
+                            ADMIN
+                          </span>
+                        )}
+                      </td>
+                      <td className="p-3 font-mono text-slate-600">
+                        <div>{u.email}</div>
+                        <div className="text-[11px] text-slate-500">{u.phoneNumber}</div>
+                      </td>
+                      <td className="p-3">
+                        <span className="px-2 py-1 bg-slate-100 text-slate-800 font-bold rounded text-[11px]">
+                          {u.role === "MAKELAR_BARANG" ? "Broker Penjual" : u.role === "MAKELAR_BUYER" ? "Broker Buyer" : u.role}
                         </span>
-                      )}
-                    </td>
-                    <td className="p-3 font-mono text-slate-600">
-                      <div>{u.email}</div>
-                      <div className="text-[11px] text-slate-500">{u.phoneNumber}</div>
-                    </td>
-                    <td className="p-3">
-                      <span className="px-2 py-1 bg-slate-100 text-slate-800 font-bold rounded text-[11px]">
-                        {u.role === "MAKELAR_BARANG" ? "Broker Penjual" : u.role === "MAKELAR_BUYER" ? "Broker Buyer" : u.role}
-                      </span>
-                    </td>
-                    <td className="p-3 font-mono text-[11px]">
-                      <div>{u.ktpNumber || "NIK Belum Diisi"}</div>
-                      <div className="text-slate-500 font-sans text-[10.5px]">{u.organization || "-"}</div>
-                    </td>
-                    <td className="p-3">
-                      <span className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase ${
-                        u.kycStatus === "VERIFIED"
-                          ? "bg-emerald-100 text-emerald-800"
-                          : u.kycStatus === "PENDING"
-                          ? "bg-amber-100 text-amber-800"
-                          : "bg-slate-100 text-slate-600"
-                      }`}>
-                        {u.kycStatus || "UNSUBMITTED"}
-                      </span>
-                    </td>
-                    <td className="p-3 text-right space-x-1 whitespace-nowrap">
-                      {u.role !== "ADMIN" && (
-                        <>
+                      </td>
+                      <td className="p-3 font-mono text-[11px]">
+                        <div className="font-bold text-slate-900">{u.ktpNumber || "NIK Belum Diisi"}</div>
+                        <div className="text-slate-500 font-sans text-[10.5px]">{u.organization || "-"}</div>
+                        {u.ktpImageUrl ? (
                           <button
-                            onClick={() => handleUpdateKYC(u.id, "VERIFIED")}
-                            className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded text-[10.5px] shadow-xs cursor-pointer"
+                            onClick={() => setPreviewKtpUser(u)}
+                            className="mt-1 px-2 py-0.5 bg-sky-100 hover:bg-sky-200 text-sky-900 font-sans font-bold text-[10px] rounded flex items-center gap-1 cursor-pointer transition-colors"
                           >
-                            Approve
+                            <Eye size={11} className="text-sky-700" />
+                            <span>Lihat Foto KTP</span>
                           </button>
-                          <button
-                            onClick={() => handleUpdateKYC(u.id, "REJECTED")}
-                            className="px-2.5 py-1 bg-amber-600 hover:bg-amber-500 text-white font-bold rounded text-[10.5px] cursor-pointer"
-                          >
-                            Tolak
-                          </button>
-                          <button
-                            onClick={() => handleDeleteUser(u.id)}
-                            className="px-2 py-1 bg-red-100 hover:bg-red-200 text-red-700 font-bold rounded text-[10.5px] cursor-pointer ml-1"
-                          >
-                            Hapus
-                          </button>
-                        </>
-                      )}
-                    </td>
-                  </tr>
-                ))}
+                        ) : (
+                          <span className="inline-block mt-1 text-[9.5px] text-red-500 font-sans font-medium">⚠️ Foto KTP belum ada</span>
+                        )}
+                      </td>
+                      <td className="p-3 font-mono">
+                        <div className="font-black text-slate-900">Rp {(u.balance || 0).toLocaleString("id-ID")}</div>
+                        <button
+                          onClick={() => setSelectedMemberForDepositHistory(u)}
+                          className="mt-1 px-2.5 py-1 bg-amber-100 hover:bg-amber-200 text-amber-950 font-bold rounded-lg text-[10px] cursor-pointer inline-flex items-center gap-1 shadow-2xs"
+                        >
+                          <History size={11} className="text-amber-700" />
+                          <span>Histori Deposit ({userDeps.length})</span>
+                        </button>
+                      </td>
+                      <td className="p-3">
+                        <span className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase ${
+                          u.kycStatus === "VERIFIED"
+                            ? "bg-emerald-100 text-emerald-800"
+                            : u.kycStatus === "PENDING"
+                            ? "bg-amber-100 text-amber-800"
+                            : "bg-slate-100 text-slate-600"
+                        }`}>
+                          {u.kycStatus || "UNSUBMITTED"}
+                        </span>
+                      </td>
+                      <td className="p-3 text-right space-x-1 whitespace-nowrap">
+                        {u.role !== "ADMIN" && (
+                          <>
+                            <button
+                              onClick={() => handleUpdateKYC(u.id, "VERIFIED")}
+                              className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded text-[10.5px] shadow-xs cursor-pointer"
+                            >
+                              Approve
+                            </button>
+                            <button
+                              onClick={() => handleUpdateKYC(u.id, "REJECTED")}
+                              className="px-2.5 py-1 bg-amber-600 hover:bg-amber-500 text-white font-bold rounded text-[10.5px] cursor-pointer"
+                            >
+                              Tolak
+                            </button>
+                            <button
+                              onClick={() => setDeleteUserTarget(u)}
+                              className="px-2 py-1 bg-red-100 hover:bg-red-200 text-red-700 font-bold rounded text-[10.5px] cursor-pointer ml-1"
+                            >
+                              Hapus
+                            </button>
+                          </>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -591,7 +791,7 @@ export default function DashboardAdmin({ supplyListings, demandListings, onRefre
                         <div className="flex items-center gap-1.5">
                           {modStatus !== "APPROVED" && (
                             <button
-                              onClick={() => handleModerate(s.id, "APPROVED")}
+                              onClick={() => handleApproveProject(s.id)}
                               className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-[11px] cursor-pointer flex items-center gap-1 shadow-2xs"
                             >
                               <CheckCircle2 size={13} /> Setujui
@@ -599,7 +799,10 @@ export default function DashboardAdmin({ supplyListings, demandListings, onRefre
                           )}
                           {modStatus !== "REJECTED" && (
                             <button
-                              onClick={() => handleModerate(s.id, "REJECTED")}
+                              onClick={() => {
+                                setRejectProjectTarget(s.id);
+                                setProjectRejectReason("Spesifikasi postingan belum memenuhi kriteria kelengkapan.");
+                              }}
                               className="px-2.5 py-1 bg-red-100 hover:bg-red-200 text-red-800 font-bold rounded-lg text-[11px] cursor-pointer flex items-center gap-1"
                             >
                               <XCircle size={13} /> Tolak
@@ -608,7 +811,7 @@ export default function DashboardAdmin({ supplyListings, demandListings, onRefre
                         </div>
 
                         <button
-                          onClick={() => handleDeleteProject(s.id)}
+                          onClick={() => setDeleteProjectTarget(s)}
                           className="p-1 bg-slate-200 hover:bg-red-100 text-slate-600 hover:text-red-700 rounded-lg cursor-pointer"
                           title="Hapus Permanen"
                         >
@@ -676,7 +879,7 @@ export default function DashboardAdmin({ supplyListings, demandListings, onRefre
                         <div className="flex items-center gap-1.5">
                           {modStatus !== "APPROVED" && (
                             <button
-                              onClick={() => handleModerate(d.id, "APPROVED")}
+                              onClick={() => handleApproveProject(d.id)}
                               className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-[11px] cursor-pointer flex items-center gap-1 shadow-2xs"
                             >
                               <CheckCircle2 size={13} /> Setujui
@@ -684,7 +887,10 @@ export default function DashboardAdmin({ supplyListings, demandListings, onRefre
                           )}
                           {modStatus !== "REJECTED" && (
                             <button
-                              onClick={() => handleModerate(d.id, "REJECTED")}
+                              onClick={() => {
+                                setRejectProjectTarget(d.id);
+                                setProjectRejectReason("Spesifikasi postingan belum memenuhi kriteria kelengkapan.");
+                              }}
                               className="px-2.5 py-1 bg-red-100 hover:bg-red-200 text-red-800 font-bold rounded-lg text-[11px] cursor-pointer flex items-center gap-1"
                             >
                               <XCircle size={13} /> Tolak
@@ -693,7 +899,7 @@ export default function DashboardAdmin({ supplyListings, demandListings, onRefre
                         </div>
 
                         <button
-                          onClick={() => handleDeleteProject(d.id)}
+                          onClick={() => setDeleteProjectTarget(d)}
                           className="p-1 bg-slate-200 hover:bg-red-100 text-slate-600 hover:text-red-700 rounded-lg cursor-pointer"
                           title="Hapus Permanen"
                         >
@@ -711,58 +917,100 @@ export default function DashboardAdmin({ supplyListings, demandListings, onRefre
       {/* TAB CONTENT 3: INTERESTS */}
       {activeTab === "INTERESTS" && (
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden space-y-4 p-4 sm:p-6">
-          <div>
-            <h3 className="text-base font-black text-slate-900">Pengajuan Minat & Permintaan Matchmaking</h3>
-            <p className="text-xs text-slate-500">
-              Verifikasi pesan kesiapan broker sebelum menyambungkan kontak pemilik proyek.
-            </p>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200 pb-3">
+            <div>
+              <h3 className="text-base font-black text-slate-900">Pengajuan Minat & Ruang Mediasi Central</h3>
+              <p className="text-xs text-slate-500">
+                Seluruh pengajuan terfilter dari percobaan bypass kontak. Mediasikan percakapan broker & buka kontak resmi saat deal disetujui.
+              </p>
+            </div>
+            <button
+              onClick={loadData}
+              className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl cursor-pointer self-start sm:self-auto flex items-center gap-1.5"
+            >
+              <RefreshCw size={13} /> Sync Minat
+            </button>
           </div>
 
           <div className="space-y-3">
             {interests.map((item) => (
               <div key={item.id} className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-3 text-xs">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200 pb-2">
-                  <div>
+                  <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-[10px] font-mono font-bold text-slate-400">ID MINAT: {item.id}</span>
                     <h4 className="font-bold text-slate-900 text-sm">{item.listingTitle}</h4>
+                    {item.hasContactAttempt && (
+                      <span className="px-2 py-0.5 bg-amber-500/20 text-amber-900 font-bold text-[10px] rounded border border-amber-400 flex items-center gap-1">
+                        <Lock size={11} className="text-amber-700" /> Sensor Bypass Terdeteksi
+                      </span>
+                    )}
+                    <span className="px-2 py-0.5 bg-emerald-100 text-emerald-900 font-bold text-[10px] rounded border border-emerald-300">
+                      Komitmen Deposit: Rp {(item.commitmentFee || 5000).toLocaleString("id-ID")}
+                    </span>
                   </div>
                   <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase self-start sm:self-auto ${
                     item.status === "VERIFIED_BY_ADMIN"
-                      ? "bg-emerald-100 text-emerald-800"
-                      : "bg-amber-100 text-amber-800"
+                      ? "bg-emerald-100 text-emerald-800 border border-emerald-300"
+                      : "bg-amber-100 text-amber-800 border border-amber-300"
                   }`}>
                     {item.status}
                   </span>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-[11.5px]">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-[11.5px] bg-white p-3 rounded-xl border border-slate-200 relative">
                   <div>
-                    <span className="text-slate-400 font-bold block text-[10px] uppercase">Pengaju Minat:</span>
+                    <span className="text-slate-400 font-bold block text-[10px] uppercase">Pengaju Minat (Requester Nickname/Nama):</span>
                     <p className="font-bold text-slate-800">{item.interestedBrokerName} ({item.interestedBrokerPhone})</p>
                   </div>
                   <div>
-                    <span className="text-slate-400 font-bold block text-[10px] uppercase">Pemilik Proyek:</span>
+                    <span className="text-slate-400 font-bold block text-[10px] uppercase">Pemilik Proyek (Owner Nickname/Nama):</span>
                     <p className="font-bold text-slate-800">{item.ownerBrokerName}</p>
                   </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingInterestItem(item);
+                      setEditOwnerName(item.ownerBrokerName || "");
+                      setEditInterestedName(item.interestedBrokerName || "");
+                    }}
+                    className="absolute top-2 right-2 text-[10px] font-bold text-amber-800 hover:text-amber-950 bg-amber-50 hover:bg-amber-100 px-2.5 py-1 rounded-lg border border-amber-300 cursor-pointer flex items-center gap-1 shadow-2xs"
+                  >
+                    ✏️ Edit Nama Pihak
+                  </button>
                 </div>
 
-                <div className="p-2.5 bg-white rounded-xl border border-slate-200 text-slate-700 leading-relaxed">
-                  <strong>Pesan Kualifikasi:</strong> "{item.userMessage}"
+                <div className="p-3 bg-white rounded-xl border border-slate-200 text-slate-800 leading-relaxed space-y-1">
+                  <div className="text-[10px] font-bold uppercase text-slate-400">Pesan Awal Kualifikasi (Disensor Sistem):</div>
+                  <p className="text-xs font-medium text-slate-800">"{item.userMessage}"</p>
                 </div>
 
                 {item.adminNotes && (
-                  <div className="text-[11px] text-emerald-800 bg-emerald-50 p-2 rounded-lg border border-emerald-200">
+                  <div className="text-[11px] text-amber-900 bg-amber-50/80 p-2.5 rounded-xl border border-amber-200">
                     <strong>Catatan Admin:</strong> {item.adminNotes}
                   </div>
                 )}
 
-                <div className="flex items-center justify-end gap-2 pt-1">
+                <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-slate-200">
                   <button
-                    onClick={() => handleUpdateInterestStatus(item.id, "VERIFIED_BY_ADMIN")}
-                    className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-lg text-xs cursor-pointer shadow-xs"
+                    type="button"
+                    onClick={() => setActiveChatInterest(item)}
+                    className="px-3.5 py-1.5 bg-slate-900 hover:bg-slate-800 text-amber-400 font-bold rounded-xl text-xs cursor-pointer flex items-center gap-1.5 shadow-sm"
                   >
-                    ✓ Setujui & Teruskan
+                    <MessageSquare size={14} />
+                    <span>💬 Buka Ruang Chat Mediasi 3-Arah ({item.chatMessages?.length || 0} Pesan)</span>
                   </button>
+
+                  <div className="flex items-center gap-2">
+                    {item.status !== "VERIFIED_BY_ADMIN" && (
+                      <button
+                        onClick={() => handleUpdateInterestStatus(item.id, "VERIFIED_BY_ADMIN", "Pengajuan diverifikasi & diteruskan oleh Admin Platform.")}
+                        className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-xs cursor-pointer shadow-xs flex items-center gap-1"
+                      >
+                        <CheckCircle2 size={13} />
+                        <span>Setujui Mediasi</span>
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
             ))}
@@ -798,6 +1046,450 @@ export default function DashboardAdmin({ supplyListings, demandListings, onRefre
         </div>
       )}
 
+      {/* TOAST NOTIFICATION BANNER */}
+      {toast && (
+        <div className={`fixed top-5 right-5 z-50 px-5 py-3 rounded-2xl shadow-2xl border flex items-center gap-3 font-bold text-xs animate-in slide-in-from-top-3 duration-200 ${
+          toast.type === "success"
+            ? "bg-slate-900 text-emerald-400 border-emerald-500/50"
+            : "bg-red-900 text-red-100 border-red-500/50"
+        }`}>
+          {toast.type === "success" ? <CheckCircle2 size={18} className="text-emerald-400" /> : <AlertTriangle size={18} className="text-red-400" />}
+          <span>{toast.message}</span>
+        </div>
+      )}
+
+      {/* MODAL: SETUJUI DEPOSIT MEMBER */}
+      {approveDepositTarget && (
+        <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 p-6 max-w-md w-full space-y-4 animate-in zoom-in-95 duration-150">
+            <div className="flex items-center gap-3 text-emerald-700">
+              <div className="p-2.5 bg-emerald-100 rounded-2xl">
+                <Coins size={24} />
+              </div>
+              <div>
+                <h4 className="font-black text-slate-900 text-base">Konfirmasi Setujui Deposit</h4>
+                <p className="text-xs text-slate-500">Saldo akun member akan bertambah secara otomatis</p>
+              </div>
+            </div>
+
+            <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200 space-y-1.5 text-xs font-mono">
+              <p className="text-slate-600"><strong>Member:</strong> {approveDepositTarget.senderName || approveDepositTarget.userName}</p>
+              <p className="text-slate-600"><strong>Nominal Top Up:</strong> <strong className="text-emerald-700 text-sm">Rp {approveDepositTarget.amount?.toLocaleString("id-ID")}</strong></p>
+              <p className="text-slate-600"><strong>Metode Pembayaran:</strong> {approveDepositTarget.paymentMethod}</p>
+              <p className="text-slate-500 text-[11px] font-sans">ID: {approveDepositTarget.id}</p>
+            </div>
+
+            <p className="text-xs text-slate-600 leading-relaxed">
+              Pastikan dana telah efektif masuk di M-Banking / QRIS platform sebelum menyetujui.
+            </p>
+
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setApproveDepositTarget(null)}
+                disabled={isSubmittingAction}
+                className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs cursor-pointer"
+              >
+                Batal
+              </button>
+
+              <button
+                type="button"
+                onClick={executeApproveDeposit}
+                disabled={isSubmittingAction}
+                className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-black rounded-xl text-xs shadow-md cursor-pointer flex items-center gap-2"
+              >
+                {isSubmittingAction ? <RefreshCw size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
+                <span>✓ Ya, Setujui Deposit Sekarang</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: TOLAK DEPOSIT MEMBER */}
+      {rejectDepositTarget && (
+        <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 p-6 max-w-md w-full space-y-4 animate-in zoom-in-95 duration-150">
+            <div className="flex items-center gap-3 text-red-600">
+              <div className="p-2.5 bg-red-100 rounded-2xl">
+                <XCircle size={24} />
+              </div>
+              <div>
+                <h4 className="font-black text-slate-900 text-base">Penolakan Deposit Member</h4>
+                <p className="text-xs text-slate-500">{rejectDepositTarget.senderName || rejectDepositTarget.userName}</p>
+              </div>
+            </div>
+
+            <div className="space-y-1.5 text-xs">
+              <label className="font-bold text-slate-800 block">Masukkan Alasan Penolakan:</label>
+              <textarea
+                rows={3}
+                value={depositRejectReason}
+                onChange={(e) => setDepositRejectReason(e.target.value)}
+                placeholder="Contoh: Dana belum masuk / Bukti foto transfer tidak dapat terbaca."
+                className="w-full p-3 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 text-xs focus:outline-none focus:border-red-500"
+              />
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setRejectDepositTarget(null)}
+                disabled={isSubmittingAction}
+                className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs cursor-pointer"
+              >
+                Batal
+              </button>
+
+              <button
+                type="button"
+                onClick={executeRejectDeposit}
+                disabled={isSubmittingAction}
+                className="px-5 py-2.5 bg-red-600 hover:bg-red-500 text-white font-black rounded-xl text-xs shadow-md cursor-pointer flex items-center gap-2"
+              >
+                {isSubmittingAction ? <RefreshCw size={14} className="animate-spin" /> : <XCircle size={14} />}
+                <span>Konfirmasi Tolak Deposit</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: TOLAK PROYEK */}
+      {rejectProjectTarget && (
+        <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 p-6 max-w-md w-full space-y-4 animate-in zoom-in-95 duration-150">
+            <h4 className="font-black text-slate-900 text-base">Alasan Penolakan Proyek</h4>
+
+            <div className="space-y-1.5 text-xs">
+              <label className="font-bold text-slate-800 block">Detail Alasan Penolakan:</label>
+              <textarea
+                rows={3}
+                value={projectRejectReason}
+                onChange={(e) => setProjectRejectReason(e.target.value)}
+                className="w-full p-3 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 text-xs focus:outline-none focus:border-red-500"
+              />
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setRejectProjectTarget(null)}
+                disabled={isSubmittingAction}
+                className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs cursor-pointer"
+              >
+                Batal
+              </button>
+
+              <button
+                type="button"
+                onClick={executeRejectProject}
+                disabled={isSubmittingAction}
+                className="px-5 py-2.5 bg-red-600 hover:bg-red-500 text-white font-black rounded-xl text-xs shadow-md cursor-pointer"
+              >
+                Tolak Proyek
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: HAPUS USER */}
+      {deleteUserTarget && (
+        <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 p-6 max-w-md w-full space-y-4 animate-in zoom-in-95 duration-150">
+            <div className="flex items-center gap-3 text-red-600">
+              <Trash2 size={24} />
+              <h4 className="font-black text-slate-900 text-base">Hapus Permanen User?</h4>
+            </div>
+
+            <p className="text-xs text-slate-600">
+              Apakah Anda yakin ingin menghapus member <strong>{deleteUserTarget.fullName}</strong> ({deleteUserTarget.email}) dari database server? Tindakan ini tidak dapat dibatalkan.
+            </p>
+
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                onClick={() => setDeleteUserTarget(null)}
+                className="px-4 py-2.5 bg-slate-100 text-slate-700 font-bold rounded-xl text-xs cursor-pointer"
+              >
+                Batal
+              </button>
+              <button
+                onClick={executeDeleteUser}
+                disabled={isSubmittingAction}
+                className="px-5 py-2.5 bg-red-600 text-white font-black rounded-xl text-xs shadow-md cursor-pointer"
+              >
+                Hapus Permanen
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: HAPUS PROYEK */}
+      {deleteProjectTarget && (
+        <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 p-6 max-w-md w-full space-y-4 animate-in zoom-in-95 duration-150">
+            <div className="flex items-center gap-3 text-red-600">
+              <Trash2 size={24} />
+              <h4 className="font-black text-slate-900 text-base">Hapus Permanen Proyek?</h4>
+            </div>
+
+            <p className="text-xs text-slate-600">
+              Apakah Anda yakin ingin menghapus proyek <strong>"{deleteProjectTarget.title}"</strong> dari database server?
+            </p>
+
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                onClick={() => setDeleteProjectTarget(null)}
+                className="px-4 py-2.5 bg-slate-100 text-slate-700 font-bold rounded-xl text-xs cursor-pointer"
+              >
+                Batal
+              </button>
+              <button
+                onClick={executeDeleteProject}
+                disabled={isSubmittingAction}
+                className="px-5 py-2.5 bg-red-600 text-white font-black rounded-xl text-xs shadow-md cursor-pointer"
+              >
+                Hapus Permanen
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL HISTORI DEPOSIT MEMBER UNTUK ADMIN */}
+      {selectedMemberForDepositHistory && (
+        <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 p-6 max-w-lg w-full space-y-4 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="p-2 bg-amber-500 text-slate-950 rounded-xl">
+                  <Coins size={18} />
+                </div>
+                <div>
+                  <h4 className="font-black text-slate-900 text-sm">Histori Deposit Member</h4>
+                  <p className="text-[11px] text-slate-500">{selectedMemberForDepositHistory.fullName} ({selectedMemberForDepositHistory.email})</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setSelectedMemberForDepositHistory(null)}
+                className="p-1.5 text-slate-400 hover:text-slate-600 rounded-full cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-center justify-between text-xs">
+              <span className="font-bold text-amber-900">Saldo Deposit Saat Ini:</span>
+              <span className="font-black font-mono text-amber-950 text-sm">
+                Rp {(selectedMemberForDepositHistory.balance || 0).toLocaleString("id-ID")}
+              </span>
+            </div>
+
+            {deposits.filter(d => d.userId === selectedMemberForDepositHistory.id).length === 0 ? (
+              <div className="p-8 text-center bg-slate-50 rounded-2xl border border-slate-200 text-slate-500 text-xs">
+                Member ini belum pernah melakukan pengajuan deposit.
+              </div>
+            ) : (
+              <div className="space-y-2.5 max-h-80 overflow-y-auto pr-1 text-xs">
+                {deposits.filter(d => d.userId === selectedMemberForDepositHistory.id).map((dep) => (
+                  <div key={dep.id} className="p-3 bg-slate-50 rounded-2xl border border-slate-200 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="font-mono text-[10px] font-bold text-slate-400">{dep.id} • {new Date(dep.createdAt).toLocaleDateString("id-ID")}</span>
+                      <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase ${
+                        dep.status === "APPROVED"
+                          ? "bg-emerald-100 text-emerald-800 border border-emerald-300"
+                          : dep.status === "REJECTED"
+                          ? "bg-red-100 text-red-800 border border-red-300"
+                          : "bg-amber-100 text-amber-800 border border-amber-300"
+                      }`}>
+                        {dep.status === "APPROVED" ? "✓ Disetujui" : dep.status === "REJECTED" ? "✕ Ditolak" : "⏳ Pending"}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between font-mono">
+                      <span className="font-black text-slate-900 text-sm">Rp {dep.amount?.toLocaleString("id-ID")}</span>
+                      <span className="px-2 py-0.5 bg-slate-200 text-slate-700 font-bold text-[10px] rounded">{dep.paymentMethod}</span>
+                    </div>
+
+                    {dep.notes && <p className="text-[11px] text-slate-600">Catatan: {dep.notes}</p>}
+                    {dep.rejectionReason && (
+                      <p className="text-[11px] text-red-600 font-bold">Alasan Tolak: {dep.rejectionReason}</p>
+                    )}
+
+                    {dep.proofUrl && (
+                      <button
+                        onClick={() => setSelectedProofUrl(dep.proofUrl)}
+                        className="text-[11px] font-bold text-amber-700 underline cursor-pointer hover:text-amber-600"
+                      >
+                        Lihat Bukti Transfer Foto ↗
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="flex justify-end pt-2">
+              <button
+                onClick={() => setSelectedMemberForDepositHistory(null)}
+                className="px-4 py-2 bg-slate-900 text-amber-400 font-bold rounded-xl text-xs cursor-pointer"
+              >
+                Tutup
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: RUANG CHAT MEDIASI 3-ARAH ADMIN CENTRAL */}
+      {activeChatInterest && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 p-5 max-w-2xl w-full space-y-4 animate-in zoom-in-95 duration-150 max-h-[90vh] flex flex-col justify-between">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+              <div className="space-y-0.5">
+                <div className="flex items-center gap-2">
+                  <span className="px-2 py-0.5 bg-slate-900 text-amber-400 text-[10px] font-mono font-bold rounded">
+                    ID: {activeChatInterest.id}
+                  </span>
+                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                    activeChatInterest.isContactRevealed ? "bg-emerald-100 text-emerald-800 border border-emerald-300" : "bg-amber-100 text-amber-900 border border-amber-300"
+                  }`}>
+                    {activeChatInterest.isContactRevealed ? "🔓 Kontak Terbuka Resmi" : "🔒 Sensor Kontak Sistem Aktif"}
+                  </span>
+                </div>
+                <h3 className="font-black text-slate-900 text-base">{activeChatInterest.listingTitle}</h3>
+                <p className="text-xs text-slate-500 flex items-center gap-2 flex-wrap">
+                  <span>Pengaju: <strong>{activeChatInterest.interestedBrokerName}</strong> ({activeChatInterest.interestedBrokerPhone})</span>
+                  <span>|</span>
+                  <span>Pemilik: <strong>{activeChatInterest.ownerBrokerName}</strong></span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingInterestItem(activeChatInterest);
+                      setEditOwnerName(activeChatInterest.ownerBrokerName || "");
+                      setEditInterestedName(activeChatInterest.interestedBrokerName || "");
+                    }}
+                    className="text-[10px] text-amber-800 hover:text-amber-950 bg-amber-100 hover:bg-amber-200 px-2 py-0.5 rounded font-bold cursor-pointer border border-amber-300"
+                  >
+                    ✏️ Edit Nama Pihak
+                  </button>
+                </p>
+              </div>
+
+              <button
+                onClick={() => setActiveChatInterest(null)}
+                className="p-1.5 text-slate-400 hover:text-slate-800 bg-slate-100 rounded-xl cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Admin Controls Toolbar */}
+            <div className="p-3 bg-slate-900 text-slate-100 rounded-2xl flex flex-wrap items-center justify-between gap-2 text-xs">
+              <div className="space-y-0.5">
+                <p className="text-[10.5px] text-slate-300 font-bold">Akses Kontak Resmi Broker:</p>
+                <p className="text-[10px] text-slate-400">
+                  {activeChatInterest.isContactRevealed 
+                    ? "Kedua belah pihak dapat melihat nomor HP resmi setelah verifikasi kualifikasi."
+                    : "Seluruh nomor HP, link WA, dan email otomatis disensor sistem."}
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => handleToggleRevealContact(activeChatInterest.id, !!activeChatInterest.isContactRevealed)}
+                className={`px-3.5 py-2 font-bold rounded-xl cursor-pointer text-xs flex items-center gap-1.5 transition-all shadow-sm ${
+                  activeChatInterest.isContactRevealed
+                    ? "bg-amber-500 text-slate-950 hover:bg-amber-400"
+                    : "bg-emerald-600 text-white hover:bg-emerald-500"
+                }`}
+              >
+                {activeChatInterest.isContactRevealed ? <Lock size={14} /> : <Unlock size={14} />}
+                <span>{activeChatInterest.isContactRevealed ? "🔒 Kunci Kembali Kontak" : "🔓 Buka Akses Kontak Resmi (Deal Verifikasi)"}</span>
+              </button>
+            </div>
+
+            {/* Chat Messages Body */}
+            <div className="flex-1 overflow-y-auto space-y-3 p-3 bg-slate-50 rounded-2xl border border-slate-200 min-h-[260px] max-h-[360px]">
+              {(!activeChatInterest.chatMessages || activeChatInterest.chatMessages.length === 0) ? (
+                <div className="text-center py-12 text-slate-400 text-xs">
+                  Belum ada pesan mediasi. Mulai kirim pesan sebagai Admin di bawah.
+                </div>
+              ) : (
+                activeChatInterest.chatMessages.map((msg: any, idx: number) => {
+                  const isAdmin = msg.senderRole === "ADMIN";
+                  const isSystem = msg.senderRole === "SYSTEM";
+                  const isRequester = msg.senderRole === "REQUESTER";
+
+                  if (isSystem) {
+                    return (
+                      <div key={idx} className="text-center my-2">
+                        <span className="inline-block px-3 py-1 bg-amber-500/15 text-amber-900 border border-amber-300 text-[10.5px] font-mono font-bold rounded-full">
+                          🛡️ {msg.message}
+                        </span>
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <div
+                      key={idx}
+                      className={`flex flex-col space-y-1 ${isAdmin ? "items-end" : "items-start"}`}
+                    >
+                      <div className="flex items-center gap-1.5 text-[10px] text-slate-400 font-bold px-1">
+                        <span>{msg.senderName} ({msg.senderRole})</span>
+                        <span>•</span>
+                        <span>{new Date(msg.createdAt).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}</span>
+                        {msg.hasContactAttempt && (
+                          <span className="text-amber-600 font-extrabold flex items-center gap-0.5 bg-amber-100 px-1.5 py-0.2 rounded">
+                            <Lock size={10} /> Disensor
+                          </span>
+                        )}
+                      </div>
+
+                      <div
+                        className={`p-3 rounded-2xl max-w-md text-xs leading-relaxed font-medium shadow-xs ${
+                          isAdmin
+                            ? "bg-slate-900 text-amber-400 border border-amber-500/30 rounded-tr-xs"
+                            : isRequester
+                            ? "bg-white text-slate-800 border border-slate-200 rounded-tl-xs"
+                            : "bg-emerald-50 text-emerald-900 border border-emerald-200 rounded-tl-xs"
+                        }`}
+                      >
+                        {msg.message}
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            {/* Admin Input Form */}
+            <form onSubmit={handleSendAdminChatMessage} className="flex items-center gap-2 pt-1">
+              <input
+                type="text"
+                required
+                placeholder="Ketik arahan atau pesan verifikasi Admin Central..."
+                value={adminChatMessage}
+                onChange={(e) => setAdminChatMessage(e.target.value)}
+                className="flex-1 p-3 bg-slate-50 border border-slate-300 focus:border-slate-900 focus:bg-white rounded-xl text-xs font-medium"
+              />
+              <button
+                type="submit"
+                className="px-4 py-3 bg-slate-900 hover:bg-slate-800 text-amber-400 font-bold rounded-xl cursor-pointer text-xs flex items-center gap-1.5 shadow"
+              >
+                <Send size={13} />
+                <span>Kirim Admin</span>
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* MODAL PREVIEW BUKTI TRANSFER FOTO */}
       {selectedProofUrl && (
         <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-4">
@@ -820,6 +1512,146 @@ export default function DashboardAdmin({ supplyListings, demandListings, onRefre
                 className="px-4 py-2 bg-slate-900 text-amber-400 font-bold rounded-xl text-xs cursor-pointer"
               >
                 Tutup
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL PREVIEW FOTO KTP / IDENTITAS MEMBER */}
+      {previewKtpUser && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 p-6 max-w-lg w-full space-y-4 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div>
+                <h4 className="font-black text-slate-900 text-base">Dokumen Identitas KTP / NIK</h4>
+                <p className="text-xs text-slate-500">{previewKtpUser.fullName} ({previewKtpUser.email})</p>
+              </div>
+              <button
+                onClick={() => setPreviewKtpUser(null)}
+                className="p-1.5 text-slate-400 hover:text-slate-700 bg-slate-100 rounded-full cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="bg-amber-50/60 border border-amber-200 rounded-2xl p-3 text-xs space-y-1">
+              <div className="flex justify-between">
+                <span className="text-slate-500">Nomor NIK:</span>
+                <span className="font-mono font-bold text-slate-900">{previewKtpUser.ktpNumber || "Belum diisi"}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Perusahaan / PT:</span>
+                <span className="font-bold text-slate-900">{previewKtpUser.organization || "-"}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Status KYC:</span>
+                <span className="font-bold text-amber-700">{previewKtpUser.kycStatus || "PENDING"}</span>
+              </div>
+            </div>
+
+            <div className="rounded-2xl overflow-hidden bg-slate-900 border border-slate-200 flex items-center justify-center max-h-[60vh] p-2">
+              {previewKtpUser.ktpImageUrl ? (
+                <img
+                  src={previewKtpUser.ktpImageUrl}
+                  alt={`KTP ${previewKtpUser.fullName}`}
+                  className="max-w-full max-h-[55vh] object-contain rounded-lg"
+                />
+              ) : (
+                <div className="p-8 text-center text-slate-400 text-xs">
+                  Foto KTP belum diunggah oleh member ini.
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center justify-between pt-2">
+              <div className="flex gap-2">
+                <button
+                  onClick={() => {
+                    handleUpdateKYC(previewKtpUser.id, "VERIFIED");
+                    setPreviewKtpUser(null);
+                  }}
+                  className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-xs shadow cursor-pointer"
+                >
+                  Setujui KYC
+                </button>
+                <button
+                  onClick={() => {
+                    handleUpdateKYC(previewKtpUser.id, "REJECTED");
+                    setPreviewKtpUser(null);
+                  }}
+                  className="px-3.5 py-2 bg-rose-600 hover:bg-rose-500 text-white font-bold rounded-xl text-xs shadow cursor-pointer"
+                >
+                  Tolak KYC
+                </button>
+              </div>
+              <button
+                onClick={() => setPreviewKtpUser(null)}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs cursor-pointer"
+              >
+                Tutup
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: UBAH NAMA PIHAK MEDIASI (ADMIN) */}
+      {editingInterestItem && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 p-6 max-w-md w-full space-y-4 animate-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+              <div>
+                <h3 className="font-black text-slate-900 text-base">Ubah Nama Pihak Mediasi (Admin)</h3>
+                <p className="text-xs text-slate-500">Ubah penamaan Pemilik Proyek & Pengaju Minat menjadi Username / Nickname.</p>
+              </div>
+              <button
+                onClick={() => setEditingInterestItem(null)}
+                className="p-1 text-slate-400 hover:text-slate-700 bg-slate-100 rounded-lg cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Nama / Username Pemilik Proyek (Owner):</label>
+                <input
+                  type="text"
+                  value={editOwnerName}
+                  onChange={(e) => setEditOwnerName(e.target.value)}
+                  placeholder="Contoh: Hendra_A1 / Broker_Hendra"
+                  className="w-full p-2.5 bg-slate-50 border border-slate-300 focus:border-amber-500 focus:bg-white rounded-xl font-bold text-slate-900"
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Nama / Username Pengaju Minat (Requester):</label>
+                <input
+                  type="text"
+                  value={editInterestedName}
+                  onChange={(e) => setEditInterestedName(e.target.value)}
+                  placeholder="Contoh: Amiruddin_Broker / Amir_Property"
+                  className="w-full p-2.5 bg-slate-50 border border-slate-300 focus:border-amber-500 focus:bg-white rounded-xl font-bold text-slate-900"
+                />
+              </div>
+            </div>
+
+            <div className="pt-2 flex items-center justify-end gap-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setEditingInterestItem(null)}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs cursor-pointer"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveInterestNames}
+                disabled={isSavingInterestName}
+                className="px-5 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black rounded-xl text-xs shadow-md cursor-pointer flex items-center gap-1.5"
+              >
+                {isSavingInterestName ? "Menyimpan..." : "✓ Simpan Perubahan"}
               </button>
             </div>
           </div>

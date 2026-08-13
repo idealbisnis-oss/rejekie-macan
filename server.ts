@@ -23,12 +23,14 @@ const INITIAL_DATA = {
     {
       id: "admin-1",
       fullName: "Super Admin Platform",
+      username: "Super Admin",
       email: "admin@rejekimacan.com",
       password: "admin123", // For demo/initial access
       phoneNumber: "081299008811",
       role: "ADMIN",
       kycStatus: "VERIFIED",
       ktpNumber: "3171010022330001",
+      ktpImageUrl: "https://images.unsplash.com/photo-1589829545856-d10d557cf95f?auto=format&fit=crop&q=80&w=600",
       organization: "Rejeki Macan HQ",
       registeredAt: new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString(),
       balance: 1000000
@@ -36,12 +38,14 @@ const INITIAL_DATA = {
     {
       id: "user-1",
       fullName: "Hendra Wijaya",
+      username: "Broker Hendra",
       email: "hendra@broker.id",
       password: "user123",
       phoneNumber: "081122334455",
       role: "MAKELAR_BARANG",
       kycStatus: "VERIFIED",
       ktpNumber: "3201018899000002",
+      ktpImageUrl: "https://images.unsplash.com/photo-1589829545856-d10d557cf95f?auto=format&fit=crop&q=80&w=600",
       organization: "Bumi Sejahtera Property",
       registeredAt: new Date(Date.now() - 14 * 24 * 3600 * 1000).toISOString(),
       balance: 150000
@@ -49,12 +53,14 @@ const INITIAL_DATA = {
     {
       id: "user-2",
       fullName: "Amiruddin",
+      username: "Amir Buyer Agent",
       email: "amir@buyeragent.com",
       password: "user123",
       phoneNumber: "081233445566",
       role: "MAKELAR_BUYER",
       kycStatus: "VERIFIED",
       ktpNumber: "3515027788990003",
+      ktpImageUrl: "https://images.unsplash.com/photo-1589829545856-d10d557cf95f?auto=format&fit=crop&q=80&w=600",
       organization: "Jawa Investor Club",
       registeredAt: new Date(Date.now() - 10 * 24 * 3600 * 1000).toISOString(),
       balance: 200000
@@ -62,12 +68,14 @@ const INITIAL_DATA = {
     {
       id: "user-3",
       fullName: "Budi Santoso",
+      username: "Budi Properti",
       email: "budi@newmember.com",
       password: "user123",
       phoneNumber: "081987654321",
       role: "MAKELAR_BARANG",
       kycStatus: "PENDING",
       ktpNumber: "3172023344550004",
+      ktpImageUrl: "https://images.unsplash.com/photo-1589829545856-d10d557cf95f?auto=format&fit=crop&q=80&w=600",
       organization: "Mandiri Brokerage",
       registeredAt: new Date(Date.now() - 1 * 24 * 3600 * 1000).toISOString(),
       balance: 0
@@ -82,7 +90,7 @@ const INITIAL_DATA = {
       location: "Bekasi, Jawa Barat",
       price: 156000000000,
       brokerId: "user-1",
-      brokerName: "Hendra Wijaya",
+      brokerName: "Broker Hendra",
       brokerPhone: "081122334455",
       status: "VERIFIED",
       imageUrl: "https://images.unsplash.com/photo-1500382017468-9049fed747ef?auto=format&fit=crop&q=80&w=1200",
@@ -101,7 +109,7 @@ const INITIAL_DATA = {
       location: "Medan, Sumatera Utara",
       price: 6250000000,
       brokerId: "user-1",
-      brokerName: "Hendra Wijaya",
+      brokerName: "Broker Hendra",
       brokerPhone: "081122334455",
       status: "VERIFIED",
       imageUrl: "https://images.unsplash.com/photo-1615811361523-6bd03d7748e7?auto=format&fit=crop&q=80&w=1200",
@@ -119,7 +127,7 @@ const INITIAL_DATA = {
       location: "Surabaya, Jawa Timur",
       price: 7800000000,
       brokerId: "user-3",
-      brokerName: "Budi Santoso",
+      brokerName: "Budi Properti",
       brokerPhone: "081987654321",
       status: "VERIFIED",
       imageUrl: "https://images.unsplash.com/photo-1504917595217-d4dc5ebe6122?auto=format&fit=crop&q=80&w=1200",
@@ -140,7 +148,7 @@ const INITIAL_DATA = {
       budgetMax: 75000000000,
       paymentSystem: "Cash Bertahap / KPR Bank Mandiri Valid",
       brokerId: "user-2",
-      brokerName: "Amiruddin",
+      brokerName: "Amir Buyer Agent",
       brokerPhone: "081233445566",
       status: "VERIFIED",
       createdAt: new Date(Date.now() - 3 * 24 * 3600 * 1000).toISOString(),
@@ -157,7 +165,7 @@ const INITIAL_DATA = {
       budgetMax: 650000000,
       paymentSystem: "CBD (Cash Before Delivery) atau SKBDN",
       brokerId: "user-2",
-      brokerName: "Amiruddin",
+      brokerName: "Amir Buyer Agent",
       brokerPhone: "081233445566",
       status: "VERIFIED",
       createdAt: new Date(Date.now() - 6 * 24 * 3600 * 1000).toISOString(),
@@ -173,9 +181,9 @@ const INITIAL_DATA = {
       listingTitle: "Lahan Industri Cikarang Barat 5.2 Hektar",
       listingType: "supply",
       ownerBrokerId: "user-1",
-      ownerBrokerName: "Hendra Wijaya",
+      ownerBrokerName: "Broker Hendra",
       interestedBrokerId: "user-2",
-      interestedBrokerName: "Amiruddin",
+      interestedBrokerName: "Amir Buyer Agent",
       interestedBrokerPhone: "081233445566",
       createdAt: new Date(Date.now() - 1 * 24 * 3600 * 1000).toISOString(),
       status: "VERIFIED_BY_ADMIN",
@@ -305,10 +313,18 @@ app.post("/api/auth/login", (req, res) => {
 });
 
 app.post("/api/auth/register", (req, res) => {
-  const { fullName, email, phoneNumber, password, role, ktpNumber, organization } = req.body;
+  const { fullName, username, email, phoneNumber, password, role, ktpNumber, ktpImageUrl, organization } = req.body;
 
   if (!fullName || !email || !phoneNumber || !password) {
-    return res.status(400).json({ success: false, message: "Harap isi semua kolom wajib." });
+    return res.status(400).json({ success: false, message: "Harap isi semua kolom wajib (Nama, Email, HP, Password)." });
+  }
+
+  if (!ktpNumber || String(ktpNumber).trim().length < 16) {
+    return res.status(400).json({ success: false, message: "Nomor KTP / NIK wajib diisi (minimal 16 digit)." });
+  }
+
+  if (!ktpImageUrl) {
+    return res.status(400).json({ success: false, message: "Upload foto KTP / Identitas wajib dilampirkan untuk verifikasi." });
   }
 
   const db = readDB();
@@ -323,12 +339,14 @@ app.post("/api/auth/register", (req, res) => {
   const newUser = {
     id: `user-${Date.now()}`,
     fullName,
+    username: username ? String(username).trim() : fullName,
     email,
     password,
     phoneNumber,
     role: role || "MAKELAR_BARANG",
     kycStatus: "PENDING",
-    ktpNumber: ktpNumber || "",
+    ktpNumber: String(ktpNumber).trim(),
+    ktpImageUrl: ktpImageUrl,
     organization: organization || "",
     registeredAt: new Date().toISOString(),
     balance: 0
@@ -340,7 +358,7 @@ app.post("/api/auth/register", (req, res) => {
   const { password: _, ...userWithoutPassword } = newUser;
   res.json({
     success: true,
-    message: "Pendaftaran berhasil! Pengajuan KYC Anda sedang ditinjau admin.",
+    message: "Pendaftaran berhasil! Pengajuan foto KTP Anda sedang ditinjau admin.",
     user: userWithoutPassword
   });
 });
@@ -354,7 +372,7 @@ app.get("/api/users", (req, res) => {
 
 app.put("/api/users/:id/kyc", (req, res) => {
   const { id } = req.params;
-  const { kycStatus, ktpNumber, organization } = req.body;
+  const { kycStatus, ktpNumber, ktpImageUrl, organization, fullName, username, phoneNumber, role } = req.body;
 
   const db = readDB();
   const userIndex = db.users.findIndex((u: any) => u.id === id);
@@ -365,12 +383,17 @@ app.put("/api/users/:id/kyc", (req, res) => {
 
   if (kycStatus) db.users[userIndex].kycStatus = kycStatus;
   if (ktpNumber !== undefined) db.users[userIndex].ktpNumber = ktpNumber;
+  if (ktpImageUrl !== undefined) db.users[userIndex].ktpImageUrl = ktpImageUrl;
   if (organization !== undefined) db.users[userIndex].organization = organization;
+  if (fullName !== undefined) db.users[userIndex].fullName = fullName;
+  if (username !== undefined) db.users[userIndex].username = username;
+  if (phoneNumber !== undefined) db.users[userIndex].phoneNumber = phoneNumber;
+  if (role !== undefined) db.users[userIndex].role = role;
 
   writeDB(db);
 
   const { password: _, ...updatedUser } = db.users[userIndex];
-  res.json({ success: true, message: "Status KYC berhasil diperbarui.", user: updatedUser });
+  res.json({ success: true, message: "Status KYC & dokumen berhasil diperbarui.", user: updatedUser });
 });
 
 app.delete("/api/users/:id", (req, res) => {
@@ -621,6 +644,44 @@ app.delete("/api/projects/:id", (req, res) => {
   res.json({ success: true, message: "Proyek berhasil dihapus dari database." });
 });
 
+// Helper for Anti-Bypass Contact Masking
+function maskSensitiveContactInfo(text: string): { maskedText: string; hasContactAttempt: boolean } {
+  if (!text) return { maskedText: "", hasContactAttempt: false };
+
+  let maskedText = text;
+  let hasContactAttempt = false;
+
+  // Phone numbers (e.g. 0812..., +62..., 08xx-xxxx-xxxx)
+  const phoneRegex = /(?:\+?62|0)[2-9]\d{1,4}[-.\s]?\d{3,5}[-.\s]?\d{3,5}\b/gi;
+  const genericDigitsRegex = /\b\d{4}[-.\s]?\d{4}[-.\s]?\d{3,6}\b/g;
+
+  // URLs & Emails
+  const urlRegex = /(?:https?:\/\/)?(?:www\.)?(?:wa\.me|whatsapp\.com|t\.me|telegram\.me|instagram\.com|facebook\.com|[a-zA-Z0-9-]+\.(?:com|co\.id|id|net|org|io|me))\b[\w/?=&#.-]*/gi;
+  const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/gi;
+
+  // Bypass Keywords
+  const bypassKeywordsRegex = /\b(hubungi\s*wa|chat\s*wa|no\s*wa|nomor\s*hp|wa\s*saya|call\s*me|telfon\s*ke|telepon\s*ke|kontak\s*wa)\b/gi;
+
+  if (
+    phoneRegex.test(maskedText) ||
+    genericDigitsRegex.test(maskedText) ||
+    urlRegex.test(maskedText) ||
+    emailRegex.test(maskedText) ||
+    bypassKeywordsRegex.test(maskedText)
+  ) {
+    hasContactAttempt = true;
+  }
+
+  maskedText = maskedText
+    .replace(phoneRegex, '🔒 [KONTAK DIBLOKIR SISTEM]')
+    .replace(genericDigitsRegex, '🔒 [NOMOR DIBLOKIR SISTEM]')
+    .replace(urlRegex, '🔒 [LINK DIBLOKIR SISTEM]')
+    .replace(emailRegex, '🔒 [EMAIL DIBLOKIR SISTEM]')
+    .replace(bypassKeywordsRegex, '🔒 [KATA KUNCI BYPASS DIBLOKIR]');
+
+  return { maskedText, hasContactAttempt };
+}
+
 // 5. Interest / Matchmaking Endpoints
 app.get("/api/interests", (req, res) => {
   const db = readDB();
@@ -632,6 +693,40 @@ app.post("/api/projects/:id/interest", (req, res) => {
   const { listingType, listingTitle, ownerBrokerId, ownerBrokerName, interestedBrokerId, interestedBrokerName, interestedBrokerPhone, userMessage } = req.body;
 
   const db = readDB();
+  
+  // 1. Check if user exists and is KYC VERIFIED
+  const user = db.users.find((u: any) => u.id === interestedBrokerId);
+  if (!user) {
+    return res.status(401).json({
+      success: false,
+      message: "Akun pengaju minat tidak ditemukan. Silakan login terlebih dahulu."
+    });
+  }
+
+  if (user.role !== "ADMIN" && user.kycStatus !== "VERIFIED") {
+    return res.status(403).json({
+      success: false,
+      message: "⚠️ Akses Dibatasi: Anda wajib melengkapi & lulus verifikasi KYC (KTP & PT) sebelum dapat mengajukan minat transaksi ke proyek ini."
+    });
+  }
+
+  // 2. Commitment Fee Deposit Check (Rp 5.000)
+  const COMMITMENT_FEE = 5000;
+  if (user.role !== "ADMIN" && (user.balance || 0) < COMMITMENT_FEE) {
+    return res.status(400).json({
+      success: false,
+      message: `⚠️ Saldo Deposit Kurang: Pengajuan minat membutuhkan biaya komitmen deposit Rp ${COMMITMENT_FEE.toLocaleString("id-ID")}. Saldo Anda saat ini: Rp ${(user.balance || 0).toLocaleString("id-ID")}. Silakan Top Up Deposit terlebih dahulu.`
+    });
+  }
+
+  // Deduct commitment fee if not admin
+  if (user.role !== "ADMIN") {
+    user.balance = (user.balance || 0) - COMMITMENT_FEE;
+  }
+
+  // 3. Mask contact info automatically
+  const { maskedText, hasContactAttempt } = maskSensitiveContactInfo(userMessage || "");
+
   const newInterest = {
     id: `INT-${Date.now().toString().slice(-4)}`,
     listingId: id,
@@ -639,39 +734,128 @@ app.post("/api/projects/:id/interest", (req, res) => {
     listingType: listingType || "supply",
     ownerBrokerId: ownerBrokerId || "admin-1",
     ownerBrokerName: ownerBrokerName || "Pemilik Proyek",
-    interestedBrokerId: interestedBrokerId || "guest",
-    interestedBrokerName: interestedBrokerName || "Member Pengaju",
-    interestedBrokerPhone: interestedBrokerPhone || "-",
+    interestedBrokerId: interestedBrokerId,
+    interestedBrokerName: user.username || user.fullName || interestedBrokerName || "Member Pengaju",
+    interestedBrokerPhone: user.phoneNumber || interestedBrokerPhone || "-",
     createdAt: new Date().toISOString(),
     status: "PENDING_VERIFICATION",
-    userMessage: userMessage || "Mengajukan minat kerjasama transaksi.",
-    adminNotes: "Menunggu verifikasi admin"
+    userMessage: maskedText || "Mengajukan minat kerjasama transaksi.",
+    originalMessage: userMessage,
+    hasContactAttempt,
+    commitmentFee: user.role !== "ADMIN" ? COMMITMENT_FEE : 0,
+    isContactRevealed: false,
+    adminNotes: hasContactAttempt 
+      ? "⚠️ Perhatian Admin: Pesan awal pengaju terdeteksi mencoba mengirim kontak langsung. Pesan telah disensor otomatis oleh sistem."
+      : "Menunggu verifikasi kesiapan oleh Admin Central.",
+    chatMessages: [
+      {
+        id: `MSG-${Date.now()}-1`,
+        senderId: interestedBrokerId,
+        senderName: user.username || user.fullName || "Member Pengaju",
+        senderRole: "REQUESTER",
+        message: maskedText,
+        createdAt: new Date().toISOString(),
+        hasContactAttempt
+      },
+      {
+        id: `MSG-${Date.now()}-2`,
+        senderId: "system",
+        senderName: "Sistem Proteksi Rejeki Macan",
+        senderRole: "SYSTEM",
+        message: `Biaya komitmen Rp ${COMMITMENT_FEE.toLocaleString("id-ID")} berhasil terpotong dari saldo deposit pengaju. Seluruh pesan dalam ruang ini terenkripsi & difasilitasi oleh Admin Platform.`,
+        createdAt: new Date().toISOString()
+      }
+    ]
   };
 
   db.interests.unshift(newInterest);
   writeDB(db);
 
+  const { password: _, ...safeUser } = user;
   res.json({
     success: true,
-    message: "Pengajuan minat berhasil dicatat ke database! Admin platform akan memverifikasi kesiapan transaksi.",
-    interest: newInterest
+    message: `Pengajuan minat berhasil dicatat! Saldo terpotong Rp ${COMMITMENT_FEE.toLocaleString("id-ID")}. Admin platform akan memverifikasi kesiapan kedua belah pihak di Ruang Mediasi Chat.`,
+    interest: newInterest,
+    user: safeUser
   });
 });
 
 app.put("/api/interests/:id", (req, res) => {
   const { id } = req.params;
-  const { status, adminNotes } = req.body;
+  const { status, adminNotes, isContactRevealed, ownerBrokerName, interestedBrokerName, listingTitle } = req.body;
 
   const db = readDB();
   const idx = db.interests.findIndex((i: any) => i.id === id);
   if (idx !== -1) {
     if (status) db.interests[idx].status = status;
     if (adminNotes) db.interests[idx].adminNotes = adminNotes;
+    if (typeof isContactRevealed === "boolean") db.interests[idx].isContactRevealed = isContactRevealed;
+    if (ownerBrokerName !== undefined) db.interests[idx].ownerBrokerName = ownerBrokerName;
+    if (interestedBrokerName !== undefined) db.interests[idx].interestedBrokerName = interestedBrokerName;
+    if (listingTitle !== undefined) db.interests[idx].listingTitle = listingTitle;
+
+    // Add system chat notification if status or names change
+    if (!db.interests[idx].chatMessages) db.interests[idx].chatMessages = [];
+    if (status || ownerBrokerName || interestedBrokerName) {
+      db.interests[idx].chatMessages.push({
+        id: `MSG-${Date.now()}`,
+        senderId: "admin",
+        senderName: "Admin Central Platform",
+        senderRole: "ADMIN",
+        message: `Pembaruan Informasi Mediasi: ${ownerBrokerName ? `Pemilik: "${ownerBrokerName}" ` : ""}${interestedBrokerName ? `Pengaju: "${interestedBrokerName}" ` : ""}${status ? `Status: ${status}` : ""}`,
+        createdAt: new Date().toISOString()
+      });
+    }
+
     writeDB(db);
-    return res.json({ success: true, message: "Status minat diperbarui.", interest: db.interests[idx] });
+    return res.json({ success: true, message: "Data minat & ruang mediasi berhasil diperbarui.", interest: db.interests[idx] });
   }
 
   res.status(404).json({ success: false, message: "Data minat tidak ditemukan." });
+});
+
+// Endpoint Chat Mediasi 3-Arah
+app.post("/api/interests/:id/chat", (req, res) => {
+  const { id } = req.params;
+  const { senderId, senderName, senderRole, message } = req.body;
+
+  const db = readDB();
+  const interest = db.interests.find((i: any) => i.id === id);
+  if (!interest) {
+    return res.status(404).json({ success: false, message: "Data minat tidak ditemukan." });
+  }
+
+  if (!interest.chatMessages) {
+    interest.chatMessages = [];
+  }
+
+  // Mask message if sender is not ADMIN and contact is not yet officially revealed
+  let finalMessage = message;
+  let attemptDetected = false;
+  if (senderRole !== "ADMIN" && !interest.isContactRevealed) {
+    const { maskedText, hasContactAttempt } = maskSensitiveContactInfo(message);
+    finalMessage = maskedText;
+    attemptDetected = hasContactAttempt;
+  }
+
+  const newMsg = {
+    id: `MSG-${Date.now()}`,
+    senderId: senderId || "user",
+    senderName: senderName || "Pengirim",
+    senderRole: senderRole || "MEMBER",
+    message: finalMessage,
+    createdAt: new Date().toISOString(),
+    hasContactAttempt: attemptDetected
+  };
+
+  interest.chatMessages.push(newMsg);
+  if (attemptDetected) {
+    interest.hasContactAttempt = true;
+    interest.adminNotes = "⚠️ Terdeteksi percobaan bypass kontak baru di Ruang Chat Mediasi.";
+  }
+
+  writeDB(db);
+  res.json({ success: true, message: "Pesan dikirim ke Ruang Mediasi.", chatMessage: newMsg, interest });
 });
 
 // 6. Deposit Requests Endpoints

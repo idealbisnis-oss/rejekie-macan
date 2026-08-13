@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Lock, Mail, Phone, User, Building, ShieldCheck, ArrowRight, UserPlus, LogIn, CheckCircle } from "lucide-react";
+import { Lock, Mail, Phone, User, Building, ShieldCheck, ArrowRight, UserPlus, LogIn, CheckCircle, CreditCard, Upload, X, FileText, Camera } from "lucide-react";
 import { UserRole } from "../types";
 
 interface HalamanAuthProps {
@@ -19,15 +19,33 @@ export default function HalamanAuth({ onLoginSubmit, onRegisterSubmit, onLoginSu
 
   // State Register
   const [regFullName, setRegFullName] = useState("");
+  const [regUsername, setRegUsername] = useState("");
   const [regEmail, setRegEmail] = useState("");
   const [regPhone, setRegPhone] = useState("");
   const [regPassword, setRegPassword] = useState("");
   const [regRole, setRegRole] = useState<string>("MAKELAR_BARANG");
   const [regKtp, setRegKtp] = useState("");
+  const [regKtpImageUrl, setRegKtpImageUrl] = useState<string>("");
   const [regOrg, setRegOrg] = useState("");
   const [isRegistering, setIsRegistering] = useState(false);
   const [registerError, setRegisterError] = useState("");
   const [registerSuccessMsg, setRegisterSuccessMsg] = useState("");
+
+  const handleKtpFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 10 * 1024 * 1024) {
+        setRegisterError("Ukuran foto KTP terlalu besar (Maksimal 10MB).");
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = () => {
+        setRegKtpImageUrl(reader.result as string);
+        setRegisterError("");
+      };
+      reader.readAsDataURL(file);
+    }
+  };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -48,22 +66,35 @@ export default function HalamanAuth({ onLoginSubmit, onRegisterSubmit, onLoginSu
     e.preventDefault();
     setRegisterError("");
     setRegisterSuccessMsg("");
+
+    if (!regKtp || regKtp.replace(/\D/g, "").length < 16) {
+      setRegisterError("Nomor KTP / NIK wajib diisi (minimal 16 digit angka).");
+      return;
+    }
+
+    if (!regKtpImageUrl) {
+      setRegisterError("Foto KTP / Identitas wajib diunggah untuk proses verifikasi KYC.");
+      return;
+    }
+
     setIsRegistering(true);
 
     const res = await onRegisterSubmit({
       fullName: regFullName,
+      username: regUsername || regFullName,
       email: regEmail,
       phoneNumber: regPhone,
       password: regPassword,
       role: regRole,
-      ktpNumber: regKtp,
+      ktpNumber: regKtp.replace(/\D/g, ""),
+      ktpImageUrl: regKtpImageUrl,
       organization: regOrg
     });
 
     setIsRegistering(false);
 
     if (res.success && res.user) {
-      setRegisterSuccessMsg("🎉 Pendaftaran berhasil! Akun Anda telah tersimpan ke Server Database.");
+      setRegisterSuccessMsg("🎉 Pendaftaran berhasil! Akun & foto KTP Anda telah tersimpan ke Server.");
       setTimeout(() => {
         onLoginSuccess(res.user);
       }, 1200);
@@ -176,38 +207,6 @@ export default function HalamanAuth({ onLoginSubmit, onRegisterSubmit, onLoginSu
               <ArrowRight size={16} />
             </button>
           </form>
-
-          {/* Quick Demo Access Box */}
-          <div className="pt-4 border-t border-slate-200 space-y-2.5">
-            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block text-center">
-              Akses Cepat Uji Coba Demo:
-            </span>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
-              <button
-                type="button"
-                onClick={() => handleQuickLogin("admin@rejekimacan.com", "admin123")}
-                className="p-2.5 bg-slate-900 text-white rounded-xl font-bold hover:bg-slate-800 transition-all text-left border border-slate-700 cursor-pointer flex items-center justify-between"
-              >
-                <div>
-                  <p className="text-[11px] text-amber-400 font-black">👑 Super Admin</p>
-                  <p className="text-[10px] text-slate-300">admin@rejekimacan.com</p>
-                </div>
-                <ArrowRight size={14} className="text-amber-400" />
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handleQuickLogin("hendra@broker.id", "user123")}
-                className="p-2.5 bg-slate-100 text-slate-900 rounded-xl font-bold hover:bg-slate-200 transition-all text-left border border-slate-300 cursor-pointer flex items-center justify-between"
-              >
-                <div>
-                  <p className="text-[11px] text-emerald-700 font-black">👤 Broker Hendra</p>
-                  <p className="text-[10px] text-slate-500">hendra@broker.id</p>
-                </div>
-                <ArrowRight size={14} className="text-slate-600" />
-              </button>
-            </div>
-          </div>
         </div>
       )}
 
@@ -235,18 +234,38 @@ export default function HalamanAuth({ onLoginSubmit, onRegisterSubmit, onLoginSu
           )}
 
           <form onSubmit={handleRegister} className="space-y-4">
-            <div className="space-y-1">
-              <label className="text-xs font-bold text-slate-700 block">Nama Lengkap: <span className="text-red-500">*</span></label>
-              <div className="relative">
-                <User className="absolute left-3.5 top-3 text-slate-400" size={16} />
-                <input
-                  type="text"
-                  required
-                  placeholder="Contoh: Ahmad Subagyo"
-                  value={regFullName}
-                  onChange={(e) => setRegFullName(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900 font-medium focus:outline-none focus:border-amber-500 focus:bg-white"
-                />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-700 block">Nama Lengkap (KTP): <span className="text-red-500">*</span></label>
+                <div className="relative">
+                  <User className="absolute left-3.5 top-3 text-slate-400" size={16} />
+                  <input
+                    type="text"
+                    required
+                    placeholder="Contoh: Ahmad Subagyo"
+                    value={regFullName}
+                    onChange={(e) => setRegFullName(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900 font-medium focus:outline-none focus:border-amber-500 focus:bg-white"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-700 block flex items-center justify-between">
+                  <span>Username / Nickname: <span className="text-red-500">*</span></span>
+                  <span className="text-[10px] text-amber-600 font-bold">🔒 Tampil di Publik</span>
+                </label>
+                <div className="relative">
+                  <User className="absolute left-3.5 top-3 text-amber-500" size={16} />
+                  <input
+                    type="text"
+                    required
+                    placeholder="Contoh: Broker_Ahmad / AhmadProp"
+                    value={regUsername}
+                    onChange={(e) => setRegUsername(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2.5 bg-amber-50/20 border border-amber-300 rounded-xl text-xs text-slate-900 font-bold focus:outline-none focus:border-amber-500"
+                  />
+                </div>
               </div>
             </div>
 
@@ -313,14 +332,19 @@ export default function HalamanAuth({ onLoginSubmit, onRegisterSubmit, onLoginSu
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1">
-                <label className="text-xs font-bold text-slate-700 block">Nomor KTP / NIK (Opsional):</label>
-                <input
-                  type="text"
-                  placeholder="16 digit NIK..."
-                  value={regKtp}
-                  onChange={(e) => setRegKtp(e.target.value)}
-                  className="w-full px-3 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900 font-medium focus:outline-none focus:border-amber-500"
-                />
+                <label className="text-xs font-bold text-slate-700 block">Nomor KTP / NIK (16 Digit): <span className="text-red-500">*</span></label>
+                <div className="relative">
+                  <CreditCard className="absolute left-3.5 top-3 text-slate-400" size={16} />
+                  <input
+                    type="text"
+                    required
+                    maxLength={16}
+                    placeholder="16 digit NIK KTP..."
+                    value={regKtp}
+                    onChange={(e) => setRegKtp(e.target.value.replace(/\D/g, ""))}
+                    className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900 font-mono tracking-wider focus:outline-none focus:border-amber-500"
+                  />
+                </div>
               </div>
 
               <div className="space-y-1">
@@ -336,6 +360,62 @@ export default function HalamanAuth({ onLoginSubmit, onRegisterSubmit, onLoginSu
                   />
                 </div>
               </div>
+            </div>
+
+            {/* UNGGAH FOTO KTP / IDENTITAS RESMI (WAJIB) */}
+            <div className="space-y-1.5 pt-1">
+              <label className="text-xs font-bold text-slate-700 block flex items-center justify-between">
+                <span>Unggah Foto KTP / Identitas Resmi: <span className="text-red-500">*</span></span>
+                <span className="text-[10px] text-slate-400 font-normal">Format PNG/JPG (Maks 10MB)</span>
+              </label>
+
+              {regKtpImageUrl ? (
+                <div className="relative p-3 bg-amber-50/60 border border-amber-300 rounded-2xl flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3 overflow-hidden">
+                    <img
+                      src={regKtpImageUrl}
+                      alt="Foto KTP / Identitas"
+                      className="w-16 h-12 object-cover rounded-lg border border-amber-400 shrink-0 shadow-xs"
+                    />
+                    <div className="min-w-0">
+                      <p className="text-xs font-bold text-amber-950 flex items-center gap-1">
+                        <CheckCircle size={14} className="text-emerald-600 shrink-0" />
+                        <span>Foto KTP Terlampir</span>
+                      </p>
+                      <p className="text-[10px] text-slate-500 truncate">Selesai diunggah. Siap diverifikasi Admin.</p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setRegKtpImageUrl("")}
+                    className="p-1.5 text-slate-400 hover:text-red-600 bg-white rounded-lg border border-slate-200 cursor-pointer shrink-0"
+                    title="Hapus Foto KTP"
+                  >
+                    <X size={15} />
+                  </button>
+                </div>
+              ) : (
+                <label className="border-2 border-dashed border-amber-300 hover:border-amber-500 bg-amber-50/30 hover:bg-amber-50/70 transition-all rounded-2xl p-4 flex flex-col items-center justify-center gap-2 cursor-pointer text-center group">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    required
+                    onChange={handleKtpFileChange}
+                    className="hidden"
+                  />
+                  <div className="w-10 h-10 bg-amber-100 text-amber-800 group-hover:scale-110 transition-transform rounded-xl flex items-center justify-center">
+                    <Upload size={20} />
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-slate-800">
+                      Klik / Drag & Drop untuk Unggah Foto KTP
+                    </p>
+                    <p className="text-[10.5px] text-slate-500 mt-0.5">
+                      Pastikan tulisan NIK, Nama, & Foto Wajah di KTP terlihat jelas
+                    </p>
+                  </div>
+                </label>
+              )}
             </div>
 
             <button

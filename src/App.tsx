@@ -105,10 +105,12 @@ export default function App() {
   const handleSubmitInterest = async (projectId: string, data: any) => {
     const res = await apiSubmitInterest(projectId, data);
     if (res.success) {
+      if (res.user) {
+        setCurrentUser(res.user);
+      }
       refreshServerData();
-      return true;
     }
-    return false;
+    return res;
   };
 
   return (
