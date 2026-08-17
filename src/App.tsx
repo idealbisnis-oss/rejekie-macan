@@ -70,7 +70,8 @@ export default function App() {
 
   const handleLoginSuccess = (user: UserSession) => {
     setCurrentUser(user);
-    if (user.role === UserRole.ADMIN) {
+    const roleStr = String(user.role || "").toUpperCase();
+    if (roleStr === "ADMIN" || user.role === UserRole.ADMIN) {
       setActiveTab("admin");
     } else {
       setActiveTab("member");

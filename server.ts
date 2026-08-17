@@ -2,12 +2,21 @@ import express from "express";
 import path from "path";
 import fs from "fs";
 import { createServer as createViteServer } from "vite";
+import { fetchRemoteDB, saveRemoteDB, getSupabaseServerClient } from "./src/services/supabaseServer";
 
 const app = express();
 const PORT = 3000;
 
 app.use(express.json({ limit: "20mb" }));
 app.use(express.urlencoded({ limit: "20mb", extended: true }));
+
+// Normalize URL prefix for Vercel Serverless Function & standard Express
+app.use((req, res, next) => {
+  if (IS_SERVERLESS && !req.url.startsWith("/api") && (req.url.startsWith("/auth") || req.url.startsWith("/users") || req.url.startsWith("/projects") || req.url.startsWith("/interests") || req.url.startsWith("/deposits") || req.url.startsWith("/admin") || req.url.startsWith("/system"))) {
+    req.url = "/api" + req.url;
+  }
+  next();
+});
 
 // Ensure data directory exists (support local & serverless writable /tmp)
 const IS_SERVERLESS = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.NETLIFY);
@@ -218,6 +227,21 @@ const INITIAL_DATA = {
 
 // Database in-memory cache for serverless environments
 let inMemoryDB: any = null;
+let supabaseSynced = false;
+
+// Initialize and sync Supabase on server startup/request
+async function checkAndSyncSupabase() {
+  if (supabaseSynced) return;
+  try {
+    const remoteData = await fetchRemoteDB(INITIAL_DATA);
+    if (remoteData) {
+      inMemoryDB = remoteData;
+      supabaseSynced = true;
+    }
+  } catch (e) {
+    // Continue with local storage
+  }
+}
 
 // Database helper functions
 function readDB() {
@@ -232,6 +256,11 @@ function readDB() {
           fs.writeFileSync(DB_FILE, JSON.stringify(INITIAL_DATA, null, 2), "utf-8");
         } catch (e) {}
       }
+    }
+
+    // Trigger non-blocking remote sync if needed
+    if (!supabaseSynced) {
+      checkAndSyncSupabase().catch(() => {});
     }
 
     const db = inMemoryDB;
@@ -275,6 +304,7 @@ function readDB() {
       try {
         fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2), "utf-8");
       } catch (e) {}
+      saveRemoteDB(db).catch(() => {});
     }
 
     return db;
@@ -292,6 +322,10 @@ function writeDB(data: any) {
   } catch (err) {
     // In serverless / read-only environment, in-memory cache continues serving
   }
+  // Asynchronously push to Supabase Cloud if configured
+  saveRemoteDB(data).catch((err) => {
+    console.warn("Supabase background write note:", err?.message || err);
+  });
 }
 
 // REST API ROUTES
@@ -299,9 +333,11 @@ function writeDB(data: any) {
 // 1. Health & Database Info
 app.get("/api/system/info", (req, res) => {
   const db = readDB();
+  const hasSupabase = Boolean(getSupabaseServerClient());
   res.json({
     status: "online",
-    database: "Central Server JSON Storage",
+    database: hasSupabase ? "Supabase Cloud Database (Connected)" : "Central Server JSON Storage",
+    supabaseConnected: hasSupabase,
     usersCount: db.users.length,
     supplyListingsCount: db.supplyListings.length,
     demandListingsCount: db.demandListings.length,
