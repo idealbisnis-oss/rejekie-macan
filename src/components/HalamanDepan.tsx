@@ -194,8 +194,8 @@ export default function HalamanDepan({
             disabled={isLoading}
             className="self-start md:self-auto px-3.5 py-1.5 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-bold rounded-lg flex items-center gap-1.5 transition-all shadow-sm cursor-pointer"
           >
-            <RefreshCw size={13} className={isLoading ? "animate-spin" : ""} />
-            <span>{isLoading ? "Memuat..." : "Refresh Database"}</span>
+            <RefreshCw size={13} className={isLoading ? "animate-spin text-amber-600" : "text-slate-500"} />
+            <span>{isLoading ? "Memperbarui..." : "Perbarui Listing"}</span>
           </button>
         </div>
 
