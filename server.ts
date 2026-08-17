@@ -293,6 +293,132 @@ app.get("/api/system/info", (req, res) => {
   });
 });
 
+// Admin Reset Website Endpoint
+app.post("/api/admin/reset-website", (req, res) => {
+  try {
+    const { resetType } = req.body;
+    const initialDB = INITIAL_DATA;
+    const currentDB = readDB();
+
+    if (resetType === "FULL_FACTORY_RESET") {
+      writeDB(initialDB);
+      return res.json({ 
+        success: true, 
+        message: "⚡ Reset Total Pabrik Berhasil! Semua data transaksi, listing, dan akun member telah dikembalikan ke kondisi default." 
+      });
+    }
+
+    if (resetType === "TRANSACTIONS_ONLY") {
+      currentDB.deposits = [];
+      currentDB.interests = [];
+      currentDB.users = currentDB.users.map((u: any) => ({
+        ...u,
+        balance: u.role === "ADMIN" ? u.balance : 0
+      }));
+      writeDB(currentDB);
+      return res.json({ 
+        success: true, 
+        message: "🧹 Pembersihan Transaksi Berhasil! Seluruh riwayat deposit dan pengajuan minat telah dikosongkan." 
+      });
+    }
+
+    if (resetType === "LISTINGS_ONLY") {
+      currentDB.supplyListings = initialDB.supplyListings;
+      currentDB.demandListings = initialDB.demandListings;
+      writeDB(currentDB);
+      return res.json({ 
+        success: true, 
+        message: "📦 Reset Katalog Proyek Berhasil! Seluruh listing dikembalikan ke data sampel standar." 
+      });
+    }
+
+    writeDB(initialDB);
+    return res.json({ success: true, message: "Reset website berhasil." });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: "Gagal melakukan reset website." });
+  }
+});
+
+// Admin Credential Update (Username & Password)
+app.put("/api/admin/update-credentials", (req, res) => {
+  const { adminId, fullName, username, email, phoneNumber, currentPassword, newPassword } = req.body;
+  const db = readDB();
+
+  const adminIndex = db.users.findIndex((u: any) => (u.id === adminId || u.role === "ADMIN"));
+  if (adminIndex === -1) {
+    return res.status(404).json({ success: false, message: "Akun Admin tidak ditemukan." });
+  }
+
+  const adminUser = db.users[adminIndex];
+
+  if (newPassword && currentPassword) {
+    if (adminUser.password !== currentPassword) {
+      return res.status(400).json({ success: false, message: "Password saat ini (Lama) tidak cocok!" });
+    }
+    adminUser.password = newPassword;
+  }
+
+  if (fullName) adminUser.fullName = fullName;
+  if (username) adminUser.username = username;
+  if (email) adminUser.email = email;
+  if (phoneNumber) adminUser.phoneNumber = phoneNumber;
+
+  db.users[adminIndex] = adminUser;
+  writeDB(db);
+
+  const { password, ...userSession } = adminUser;
+  return res.json({
+    success: true,
+    message: "✓ Username & Kredensial Akun Admin berhasil diperbarui!",
+    user: userSession
+  });
+});
+
+// Create New Admin Account Endpoint
+app.post("/api/admin/create-admin", (req, res) => {
+  const { fullName, username, email, phoneNumber, password } = req.body;
+
+  if (!fullName || !email || !phoneNumber || !password) {
+    return res.status(400).json({ success: false, message: "Harap lengkapi semua kolom wajib (Nama, Email, HP, Password)." });
+  }
+
+  const db = readDB();
+  const existingUser = db.users.find((u: any) => u.email === email || u.phoneNumber === phoneNumber);
+
+  if (existingUser) {
+    return res.status(400).json({ success: false, message: "Email atau Nomor WhatsApp ini sudah terdaftar di sistem!" });
+  }
+
+  const newAdmin = {
+    id: `admin-${Date.now()}`,
+    fullName,
+    username: username ? username.trim() : fullName,
+    email,
+    password,
+    phoneNumber,
+    role: "ADMIN",
+    kycStatus: "VERIFIED",
+    balance: 0,
+    createdAt: new Date().toISOString()
+  };
+
+  db.users.push(newAdmin);
+  writeDB(db);
+
+  return res.json({
+    success: true,
+    message: `✓ Akun Admin Baru (${newAdmin.username}) berhasil ditambahkan!`,
+    admin: {
+      id: newAdmin.id,
+      fullName: newAdmin.fullName,
+      username: newAdmin.username,
+      email: newAdmin.email,
+      phoneNumber: newAdmin.phoneNumber,
+      role: newAdmin.role
+    }
+  });
+});
+
 // 2. Auth Endpoints
 app.post("/api/auth/login", (req, res) => {
   const { emailOrPhone, password } = req.body;

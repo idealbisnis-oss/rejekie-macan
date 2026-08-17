@@ -241,6 +241,8 @@ export default function App() {
               supplyListings={supplyListings}
               demandListings={demandListings}
               onRefreshData={refreshServerData}
+              currentUser={currentUser}
+              onUpdateUserSession={(u) => setCurrentUser(u)}
             />
           )}
         </main>

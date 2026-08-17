@@ -202,3 +202,44 @@ export async function apiGetAdminStats() {
   const res = await fetch("/api/admin/stats");
   return res.json();
 }
+
+export async function apiAdminResetWebsite(resetType: "FULL_FACTORY_RESET" | "TRANSACTIONS_ONLY" | "LISTINGS_ONLY") {
+  const res = await fetch("/api/admin/reset-website", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ resetType })
+  });
+  return res.json();
+}
+
+export async function apiAdminUpdateCredentials(data: {
+  adminId?: string;
+  fullName?: string;
+  username?: string;
+  email?: string;
+  phoneNumber?: string;
+  currentPassword?: string;
+  newPassword?: string;
+}) {
+  const res = await fetch("/api/admin/update-credentials", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data)
+  });
+  return res.json();
+}
+
+export async function apiAdminCreateAccount(data: {
+  fullName: string;
+  username?: string;
+  email: string;
+  phoneNumber: string;
+  password: string;
+}) {
+  const res = await fetch("/api/admin/create-admin", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data)
+  });
+  return res.json();
+}

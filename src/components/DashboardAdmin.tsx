@@ -2,22 +2,26 @@ import React, { useState, useEffect } from "react";
 import { 
   Users, CheckCircle2, XCircle, ShieldAlert, FileText, Database, 
   Trash2, RefreshCw, Send, Check, AlertTriangle, Layers, Building2, UserCheck, Clock, CheckCircle,
-  Coins, Eye, QrCode, Building, ExternalLink, History, MessageSquare, Lock, Unlock, ShieldCheck
+  Coins, Eye, QrCode, Building, ExternalLink, History, MessageSquare, Lock, Unlock, ShieldCheck,
+  Settings, Key, UserPlus, RotateCcw
 } from "lucide-react";
 import { 
   apiGetUsers, apiUpdateUserKYC, apiDeleteUser, apiGetAdminStats, 
   apiDeleteProject, apiGetInterests, apiUpdateInterest, apiModerateProject,
-  apiGetDeposits, apiApproveDeposit, apiRejectDeposit, apiSendInterestChatMessage
+  apiGetDeposits, apiApproveDeposit, apiRejectDeposit, apiSendInterestChatMessage,
+  apiAdminResetWebsite, apiAdminUpdateCredentials, apiAdminCreateAccount
 } from "../services/api";
 
 interface DashboardAdminProps {
   supplyListings: any[];
   demandListings: any[];
   onRefreshData: () => void;
+  currentUser?: any;
+  onUpdateUserSession?: (updatedUser: any) => void;
 }
 
-export default function DashboardAdmin({ supplyListings, demandListings, onRefreshData }: DashboardAdminProps) {
-  const [activeTab, setActiveTab] = useState<"DEPOSITS" | "USERS" | "PROJECTS" | "INTERESTS" | "DATABASE">("DEPOSITS");
+export default function DashboardAdmin({ supplyListings, demandListings, onRefreshData, currentUser, onUpdateUserSession }: DashboardAdminProps) {
+  const [activeTab, setActiveTab] = useState<"DEPOSITS" | "USERS" | "PROJECTS" | "INTERESTS" | "DATABASE" | "SETTINGS">("DEPOSITS");
   const [projectFilter, setProjectFilter] = useState<"ALL" | "PENDING" | "APPROVED" | "REJECTED">("ALL");
   const [depositFilter, setDepositFilter] = useState<"ALL" | "PENDING" | "APPROVED" | "REJECTED">("PENDING");
 
@@ -27,6 +31,144 @@ export default function DashboardAdmin({ supplyListings, demandListings, onRefre
   const [stats, setStats] = useState<any>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [selectedProofUrl, setSelectedProofUrl] = useState<string | null>(null);
+
+  // State Form Edit Credential Admin (Username & Password)
+  const [adminFullName, setAdminFullName] = useState<string>(currentUser?.fullName || "");
+  const [adminUsername, setAdminUsername] = useState<string>(currentUser?.username || currentUser?.fullName || "");
+  const [adminEmail, setAdminEmail] = useState<string>(currentUser?.email || "");
+  const [adminPhone, setAdminPhone] = useState<string>(currentUser?.phoneNumber || "");
+  const [adminCurrentPassword, setAdminCurrentPassword] = useState<string>("");
+  const [adminNewPassword, setAdminNewPassword] = useState<string>("");
+  const [adminConfirmPassword, setAdminConfirmPassword] = useState<string>("");
+  const [isUpdatingCreds, setIsUpdatingCreds] = useState<boolean>(false);
+
+  // State Form Tambah Admin Baru
+  const [newAdminFullName, setNewAdminFullName] = useState<string>("");
+  const [newAdminUsername, setNewAdminUsername] = useState<string>("");
+  const [newAdminEmail, setNewAdminEmail] = useState<string>("");
+  const [newAdminPhone, setNewAdminPhone] = useState<string>("");
+  const [newAdminPassword, setNewAdminPassword] = useState<string>("");
+  const [isCreatingAdmin, setIsCreatingAdmin] = useState<boolean>(false);
+
+  // State Reset Website Modal
+  const [resetModalType, setResetModalType] = useState<"FULL_FACTORY_RESET" | "TRANSACTIONS_ONLY" | "LISTINGS_ONLY" | null>(null);
+  const [resetConfirmText, setResetConfirmText] = useState<string>("");
+  const [isExecutingReset, setIsExecutingReset] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (currentUser) {
+      setAdminFullName(currentUser.fullName || "");
+      setAdminUsername(currentUser.username || currentUser.fullName || "");
+      setAdminEmail(currentUser.email || "");
+      setAdminPhone(currentUser.phoneNumber || "");
+    }
+  }, [currentUser]);
+
+  // Handler Update Admin Profile & Password
+  const handleUpdateAdminProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (adminNewPassword) {
+      if (!adminCurrentPassword) {
+        showToast("Harap masukkan password saat ini (lama) untuk mengubah password baru!", "error");
+        return;
+      }
+      if (adminNewPassword !== adminConfirmPassword) {
+        showToast("Konfirmasi password baru tidak cocok dengan password baru!", "error");
+        return;
+      }
+    }
+
+    setIsUpdatingCreds(true);
+    try {
+      const res = await apiAdminUpdateCredentials({
+        adminId: currentUser?.id,
+        fullName: adminFullName,
+        username: adminUsername,
+        email: adminEmail,
+        phoneNumber: adminPhone,
+        currentPassword: adminCurrentPassword || undefined,
+        newPassword: adminNewPassword || undefined,
+      });
+
+      if (res.success && res.user) {
+        showToast(res.message || "✓ Profile & Kredensial Admin berhasil diperbarui!");
+        if (onUpdateUserSession) onUpdateUserSession(res.user);
+        setAdminCurrentPassword("");
+        setAdminNewPassword("");
+        setAdminConfirmPassword("");
+        loadData();
+      } else {
+        showToast(res.message || "Gagal memperbarui profil admin.", "error");
+      }
+    } catch (err) {
+      showToast("Terjadi kesalahan sistem saat memperbarui profil.", "error");
+    } finally {
+      setIsUpdatingCreds(false);
+    }
+  };
+
+  // Handler Tambah Akun Admin Baru
+  const handleCreateNewAdmin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newAdminFullName || !newAdminEmail || !newAdminPhone || !newAdminPassword) {
+      showToast("Harap isi semua kolom wajib untuk pendaftaran admin baru!", "error");
+      return;
+    }
+
+    setIsCreatingAdmin(true);
+    try {
+      const res = await apiAdminCreateAccount({
+        fullName: newAdminFullName,
+        username: newAdminUsername || newAdminFullName,
+        email: newAdminEmail,
+        phoneNumber: newAdminPhone,
+        password: newAdminPassword,
+      });
+
+      if (res.success) {
+        showToast(res.message || "✓ Akun Admin baru berhasil ditambahkan!");
+        setNewAdminFullName("");
+        setNewAdminUsername("");
+        setNewAdminEmail("");
+        setNewAdminPhone("");
+        setNewAdminPassword("");
+        loadData();
+      } else {
+        showToast(res.message || "Gagal menambahkan akun admin baru.", "error");
+      }
+    } catch (err) {
+      showToast("Terjadi kesalahan saat menambahkan akun admin.", "error");
+    } finally {
+      setIsCreatingAdmin(false);
+    }
+  };
+
+  // Handler Eksekusi Reset Website
+  const handleExecuteResetWebsite = async () => {
+    if (!resetModalType) return;
+    if (resetConfirmText.trim().toUpperCase() !== "RESET") {
+      showToast("Harap ketik kata 'RESET' dengan huruf kapital untuk konfirmasi!", "error");
+      return;
+    }
+
+    setIsExecutingReset(true);
+    try {
+      const res = await apiAdminResetWebsite(resetModalType);
+      if (res.success) {
+        showToast(res.message || "✓ Reset Website berhasil dilakukan!");
+        setResetModalType(null);
+        setResetConfirmText("");
+        loadData();
+        onRefreshData();
+      } else {
+        showToast(res.message || "Gagal melakukan reset website.", "error");
+      }
+    } catch (err) {
+      showToast("Terjadi kesalahan saat mereset website.", "error");
+    } finally {
+      setIsExecutingReset(false);
+    }
+  };
 
   // Load Admin Data from Server API
   const loadData = async () => {
@@ -432,6 +574,17 @@ export default function DashboardAdmin({ supplyListings, demandListings, onRefre
         >
           <Database size={14} />
           <span>Status Database Server</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab("SETTINGS")}
+          className={`px-4 py-2 rounded-xl transition-all cursor-pointer flex items-center gap-2 ${
+            activeTab === "SETTINGS" ? "bg-amber-500 text-slate-950 font-black shadow-md shadow-amber-500/20 scale-[1.02]" : "bg-amber-50 text-amber-900 hover:bg-amber-100 border border-amber-300"
+          }`}
+        >
+          <Settings size={14} />
+          <span>⚙️ Reset & Akses Admin</span>
         </button>
       </div>
 
@@ -1046,6 +1199,360 @@ export default function DashboardAdmin({ supplyListings, demandListings, onRefre
         </div>
       )}
 
+      {/* TAB CONTENT 5: RESET WEBSITE & AKES ADMIN */}
+      {activeTab === "SETTINGS" && (
+        <div className="space-y-8 animate-in fade-in duration-200">
+
+          {/* SECTION 1: ATUR PASSWORD, USERNAME, & PROFIL ADMIN SAYA */}
+          <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm space-y-6">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-amber-500/10 text-amber-600 flex items-center justify-center font-bold">
+                  <Key size={20} />
+                </div>
+                <div>
+                  <h3 className="font-black text-slate-900 text-lg">Atur Password, Username & Profil Admin</h3>
+                  <p className="text-xs text-slate-500">Kelola identitas publik, email, nomor kontak, serta ganti password akun admin Anda.</p>
+                </div>
+              </div>
+              <span className="px-3 py-1 bg-amber-100 text-amber-900 rounded-full font-black text-[11px] border border-amber-300">
+                👑 Akun Utama Terhubung
+              </span>
+            </div>
+
+            <form onSubmit={handleUpdateAdminProfile} className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+
+                {/* Kiri: Informasi Profil */}
+                <div className="space-y-4 bg-slate-50/70 p-4 rounded-2xl border border-slate-200/80">
+                  <h4 className="font-bold text-slate-800 text-xs uppercase tracking-wider flex items-center gap-1.5 text-amber-700">
+                    👤 Identitas & Kontak Admin
+                  </h4>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-700 block">Nama Lengkap Admin:</label>
+                    <input
+                      type="text"
+                      required
+                      value={adminFullName}
+                      onChange={(e) => setAdminFullName(e.target.value)}
+                      placeholder="Contoh: Super Admin Platform"
+                      className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-900 focus:outline-none focus:border-amber-500"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-700 block flex items-center justify-between">
+                      <span>Username / Nickname Admin:</span>
+                      <span className="text-[10px] text-amber-600 font-bold">🔒 Tampil di Publik</span>
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={adminUsername}
+                      onChange={(e) => setAdminUsername(e.target.value)}
+                      placeholder="Contoh: Super Admin"
+                      className="w-full px-3.5 py-2.5 bg-amber-50/30 border border-amber-300 rounded-xl text-xs font-bold text-slate-900 focus:outline-none focus:border-amber-500"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-700 block">Email Admin:</label>
+                      <input
+                        type="email"
+                        required
+                        value={adminEmail}
+                        onChange={(e) => setAdminEmail(e.target.value)}
+                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-medium text-slate-900 focus:outline-none focus:border-amber-500"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-700 block">No. WhatsApp:</label>
+                      <input
+                        type="text"
+                        required
+                        value={adminPhone}
+                        onChange={(e) => setAdminPhone(e.target.value)}
+                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-medium text-slate-900 focus:outline-none focus:border-amber-500"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Kanan: Ganti Password */}
+                <div className="space-y-4 bg-amber-50/30 p-4 rounded-2xl border border-amber-200">
+                  <h4 className="font-bold text-slate-800 text-xs uppercase tracking-wider flex items-center gap-1.5 text-amber-800">
+                    🔒 Ubah Keamanan Password
+                  </h4>
+                  <p className="text-[11px] text-slate-500 leading-relaxed">
+                    Kosongkan kolom password di bawah ini jika Anda tidak ingin mengganti password akun Anda saat ini.
+                  </p>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-700 block">Password Saat Ini (Lama):</label>
+                    <input
+                      type="password"
+                      value={adminCurrentPassword}
+                      onChange={(e) => setAdminCurrentPassword(e.target.value)}
+                      placeholder="Masukkan password lama"
+                      className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs font-medium text-slate-900 focus:outline-none focus:border-amber-500"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-700 block">Password Baru:</label>
+                      <input
+                        type="password"
+                        value={adminNewPassword}
+                        onChange={(e) => setAdminNewPassword(e.target.value)}
+                        placeholder="Password baru"
+                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-medium text-slate-900 focus:outline-none focus:border-amber-500"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-700 block">Konfirmasi Password Baru:</label>
+                      <input
+                        type="password"
+                        value={adminConfirmPassword}
+                        onChange={(e) => setAdminConfirmPassword(e.target.value)}
+                        placeholder="Ulangi password baru"
+                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-medium text-slate-900 focus:outline-none focus:border-amber-500"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex justify-end pt-2 border-t border-slate-100">
+                <button
+                  type="submit"
+                  disabled={isUpdatingCreds}
+                  className="px-6 py-3 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black rounded-xl text-xs shadow-md shadow-amber-500/20 cursor-pointer flex items-center gap-2 transition-all"
+                >
+                  {isUpdatingCreds ? "Menyimpan Perubahan..." : "💾 Simpan Perubahan Profil & Password Admin"}
+                </button>
+              </div>
+            </form>
+          </div>
+
+          {/* SECTION 2: KELOLA & TAMBAH AKUN ADMIN BARU */}
+          <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm space-y-6">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-indigo-500/10 text-indigo-600 flex items-center justify-center font-bold">
+                  <UserPlus size={20} />
+                </div>
+                <div>
+                  <h3 className="font-black text-slate-900 text-lg">Tambah & Akses Akun Admin Baru</h3>
+                  <p className="text-xs text-slate-500">Berikan akses administrator tambahan bagi asisten atau rekan tim verifikator Anda.</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+              {/* Form Tambah Admin */}
+              <form onSubmit={handleCreateNewAdmin} className="lg:col-span-5 bg-slate-50 p-5 rounded-2xl border border-slate-200/80 space-y-4">
+                <h4 className="font-black text-slate-900 text-sm flex items-center gap-2">
+                  <span>➕ Form Tambah Admin Baru</span>
+                </h4>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-700 block">Nama Lengkap Admin:</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Contoh: Budi Asisten Verifikator"
+                    value={newAdminFullName}
+                    onChange={(e) => setNewAdminFullName(e.target.value)}
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-medium text-slate-900 focus:outline-none focus:border-amber-500"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-700 block">Username / Nickname Admin:</label>
+                  <input
+                    type="text"
+                    placeholder="Contoh: Admin_Budi"
+                    value={newAdminUsername}
+                    onChange={(e) => setNewAdminUsername(e.target.value)}
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-900 focus:outline-none focus:border-amber-500"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-700 block">Email Login:</label>
+                  <input
+                    type="email"
+                    required
+                    placeholder="budi.admin@rejekimacan.com"
+                    value={newAdminEmail}
+                    onChange={(e) => setNewAdminEmail(e.target.value)}
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-medium text-slate-900 focus:outline-none focus:border-amber-500"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-700 block">No. WhatsApp:</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="081234567890"
+                      value={newAdminPhone}
+                      onChange={(e) => setNewAdminPhone(e.target.value)}
+                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-medium text-slate-900 focus:outline-none focus:border-amber-500"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-700 block">Password Initial:</label>
+                    <input
+                      type="password"
+                      required
+                      placeholder="Password min 6 karakter"
+                      value={newAdminPassword}
+                      onChange={(e) => setNewAdminPassword(e.target.value)}
+                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-medium text-slate-900 focus:outline-none focus:border-amber-500"
+                    />
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={isCreatingAdmin}
+                  className="w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-black rounded-xl text-xs shadow-md cursor-pointer transition-all flex items-center justify-center gap-2 mt-2"
+                >
+                  {isCreatingAdmin ? "Mendaftarkan Admin..." : "✨ Buat Akun Admin Baru"}
+                </button>
+              </form>
+
+              {/* Tabel Daftar Admin Terdaftar */}
+              <div className="lg:col-span-7 space-y-3">
+                <h4 className="font-bold text-slate-800 text-xs uppercase tracking-wider">
+                  📋 Daftar Akun Administrator Terdaftar ({users.filter(u => u.role === "ADMIN").length})
+                </h4>
+                <div className="bg-slate-50 rounded-2xl border border-slate-200/80 overflow-hidden">
+                  <div className="divide-y divide-slate-200">
+                    {users.filter(u => u.role === "ADMIN").map((adm, idx) => (
+                      <div key={adm.id || idx} className="p-3.5 flex items-center justify-between gap-3 hover:bg-white transition-colors">
+                        <div className="flex items-center gap-3">
+                          <div className="w-9 h-9 rounded-xl bg-amber-400 text-slate-950 font-black text-xs flex items-center justify-center">
+                            👑
+                          </div>
+                          <div>
+                            <p className="font-black text-slate-900 text-xs flex items-center gap-1.5">
+                              <span>{adm.fullName}</span>
+                              <span className="text-[10px] text-amber-700 bg-amber-100 font-bold px-1.5 py-0.2 rounded">@{adm.username || "admin"}</span>
+                            </p>
+                            <p className="text-[10px] text-slate-500">{adm.email} • WA: {adm.phoneNumber}</p>
+                          </div>
+                        </div>
+                        <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-full border border-emerald-300">
+                          ✓ Active Admin
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* SECTION 3: RESET WEBSITE & SERVER DATABASE */}
+          <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm space-y-6">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-red-500/10 text-red-600 flex items-center justify-center font-bold">
+                  <RotateCcw size={20} />
+                </div>
+                <div>
+                  <h3 className="font-black text-slate-900 text-lg">Reset Website & Server Database</h3>
+                  <p className="text-xs text-slate-500">Pilihan pembersihan data transaksi uji coba, pengembalian katalog proyek, atau reset total ke kondisi pabrik.</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+
+              {/* Opsi 1: Cleansing Transaksi */}
+              <div className="bg-amber-50/50 p-5 rounded-2xl border border-amber-200 space-y-3 flex flex-col justify-between">
+                <div className="space-y-2">
+                  <span className="px-2.5 py-1 bg-amber-200 text-amber-900 rounded-lg text-[10px] font-black uppercase tracking-wider inline-block">
+                    🧹 Pembersihan Ringan
+                  </span>
+                  <h4 className="font-black text-slate-900 text-sm">Clear Riwayat Transaksi & Chat</h4>
+                  <p className="text-[11px] text-slate-600 leading-relaxed">
+                    Menghapus seluruh historis pengajuan deposit, histori penawaran minat, serta percakapan ruang mediasi.
+                    <strong> Akun member & listing proyek tetap utuh.</strong>
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setResetModalType("TRANSACTIONS_ONLY");
+                    setResetConfirmText("");
+                  }}
+                  className="w-full py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black rounded-xl text-xs cursor-pointer shadow-sm transition-all"
+                >
+                  Bersihkan Transaksi
+                </button>
+              </div>
+
+              {/* Opsi 2: Reset Katalog */}
+              <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200 space-y-3 flex flex-col justify-between">
+                <div className="space-y-2">
+                  <span className="px-2.5 py-1 bg-slate-200 text-slate-800 rounded-lg text-[10px] font-black uppercase tracking-wider inline-block">
+                    📦 Restorasi Katalog
+                  </span>
+                  <h4 className="font-black text-slate-900 text-sm">Reset Katalog Proyek (Listings)</h4>
+                  <p className="text-[11px] text-slate-600 leading-relaxed">
+                    Mengembalikan daftar proyek tanah, lahan, & supply/demand ke data sampel bawaan terverifikasi.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setResetModalType("LISTINGS_ONLY");
+                    setResetConfirmText("");
+                  }}
+                  className="w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-black rounded-xl text-xs cursor-pointer shadow-sm transition-all"
+                >
+                  Reset Katalog Proyek
+                </button>
+              </div>
+
+              {/* Opsi 3: Factory Reset Total */}
+              <div className="bg-red-50/60 p-5 rounded-2xl border border-red-200 space-y-3 flex flex-col justify-between">
+                <div className="space-y-2">
+                  <span className="px-2.5 py-1 bg-red-200 text-red-950 rounded-lg text-[10px] font-black uppercase tracking-wider inline-block">
+                    ⚡ Reset Total Pabrik
+                  </span>
+                  <h4 className="font-black text-red-900 text-sm">Full Factory Reset Server</h4>
+                  <p className="text-[11px] text-red-800/80 leading-relaxed">
+                    Mengembalikan seluruh isi website, database user, transaksi, saldo, dan katalog ke kondisi persis saat aplikasi pertama kali dibuat.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setResetModalType("FULL_FACTORY_RESET");
+                    setResetConfirmText("");
+                  }}
+                  className="w-full py-2.5 bg-red-600 hover:bg-red-700 text-white font-black rounded-xl text-xs cursor-pointer shadow-md transition-all flex items-center justify-center gap-1.5"
+                >
+                  <ShieldAlert size={15} />
+                  <span>Reset Total Website</span>
+                </button>
+              </div>
+
+            </div>
+          </div>
+
+        </div>
+      )}
+
       {/* TOAST NOTIFICATION BANNER */}
       {toast && (
         <div className={`fixed top-5 right-5 z-50 px-5 py-3 rounded-2xl shadow-2xl border flex items-center gap-3 font-bold text-xs animate-in slide-in-from-top-3 duration-200 ${
@@ -1652,6 +2159,72 @@ export default function DashboardAdmin({ supplyListings, demandListings, onRefre
                 className="px-5 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black rounded-xl text-xs shadow-md cursor-pointer flex items-center gap-1.5"
               >
                 {isSavingInterestName ? "Menyimpan..." : "✓ Simpan Perubahan"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL KONFIRMASI RESET WEBSITE */}
+      {resetModalType && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 p-6 max-w-md w-full space-y-4 animate-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+              <div className="flex items-center gap-2 text-red-600">
+                <ShieldAlert size={22} />
+                <h3 className="font-black text-slate-900 text-base">Konfirmasi Reset Website</h3>
+              </div>
+              <button
+                onClick={() => setResetModalType(null)}
+                className="p-1 text-slate-400 hover:text-slate-700 bg-slate-100 rounded-lg cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div className="p-3.5 bg-red-50 border border-red-200 rounded-2xl text-red-900 space-y-1">
+                <p className="font-black">⚠️ Peringatan Tindakan Penataan Server:</p>
+                <p className="text-[11px] leading-relaxed">
+                  {resetModalType === "FULL_FACTORY_RESET" && "Anda akan melakukan Reset Total Pabrik. Seluruh transaksi, listing, dan member uji coba akan dikembalikan ke kondisi default."}
+                  {resetModalType === "TRANSACTIONS_ONLY" && "Anda akan mengosongkan seluruh histori deposit & chat minat mediasi."}
+                  {resetModalType === "LISTINGS_ONLY" && "Anda akan mereset daftar katalog proyek ke data standar pabrik."}
+                </p>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="block font-bold text-slate-800">
+                  Untuk melanjutkan, ketik kata <span className="text-red-600 font-black">RESET</span> di bawah ini:
+                </label>
+                <input
+                  type="text"
+                  value={resetConfirmText}
+                  onChange={(e) => setResetConfirmText(e.target.value)}
+                  placeholder="Ketik RESET"
+                  className="w-full p-2.5 bg-slate-50 border border-slate-300 focus:border-red-500 focus:bg-white rounded-xl font-black text-slate-900 uppercase tracking-widest text-center"
+                />
+              </div>
+            </div>
+
+            <div className="pt-2 flex items-center justify-end gap-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setResetModalType(null)}
+                className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs cursor-pointer"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={handleExecuteResetWebsite}
+                disabled={isExecutingReset || resetConfirmText.trim().toUpperCase() !== "RESET"}
+                className={`px-5 py-2.5 font-black rounded-xl text-xs shadow-md cursor-pointer transition-all flex items-center gap-1.5 ${
+                  resetConfirmText.trim().toUpperCase() === "RESET"
+                    ? "bg-red-600 hover:bg-red-700 text-white"
+                    : "bg-slate-200 text-slate-400 cursor-not-allowed"
+                }`}
+              >
+                {isExecutingReset ? "Mereset Website..." : "⚡ Eksekusi Reset Sekarang"}
               </button>
             </div>
           </div>

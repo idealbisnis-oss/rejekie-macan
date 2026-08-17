@@ -8,7 +8,7 @@ import {
   MessageSquare, Lock, Unlock
 } from "lucide-react";
 import { UserSession, DepositRequest, PaymentMethod } from "../types";
-import { apiTopUpDeposit, apiExtendProject, apiSubmitDeposit, apiGetDeposits, apiSendInterestChatMessage } from "../services/api";
+import { apiTopUpDeposit, apiExtendProject, apiSubmitDeposit, apiGetDeposits, apiSendInterestChatMessage, apiUpdateUserKYC, apiUpdateInterest } from "../services/api";
 
 interface DashboardMemberProps {
   currentUser: UserSession;
@@ -103,7 +103,7 @@ export default function DashboardMember({
     try {
       const res = await apiUpdateUserKYC(currentUser.id, { username: editUsername.trim() });
       if (res.success && res.user) {
-        onUserChange(res.user);
+        if (onUpdateUserSession) onUpdateUserSession(res.user);
         alert("✓ Username / Nickname Broker berhasil diperbarui!");
       } else {
         alert(res.message || "Gagal memperbarui username.");
