@@ -132,19 +132,16 @@ export default function App() {
                 <div>
                   <div className="flex items-center gap-2">
                     <h1 className="text-lg font-black tracking-tight text-white font-mono uppercase">REJEKI MACAN</h1>
-                    <span className="text-[9px] bg-amber-500/20 border border-amber-500/30 text-amber-400 font-bold uppercase rounded px-1.5 py-0.5 tracking-wider">
-                      FULLSTACK DEPLOY
-                    </span>
                   </div>
                   <p className="text-[10px] text-slate-400 tracking-wide font-medium">Mediator & Broker Matchmaking Platform</p>
                 </div>
               </div>
 
-              {/* Database Connection Status & User Profile Top Bar */}
+              {/* Status Indicator & User Profile Top Bar */}
               <div className="flex items-center gap-3">
-                <div className="hidden sm:flex items-center gap-2 bg-slate-800/90 border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-slate-300">
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
-                  <span className="font-mono text-[11px] font-bold">Database Server: Active</span>
+                <div className="hidden sm:flex items-center gap-2 bg-slate-800/80 border border-slate-700/70 rounded-xl px-3 py-1.5 text-xs">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+                  <span className="text-[11px] font-semibold text-emerald-400">Online</span>
                 </div>
 
                 {currentUser ? (
