@@ -103,18 +103,6 @@ export default function HalamanAuth({ onLoginSubmit, onRegisterSubmit, onLoginSu
     }
   };
 
-  // Quick demo login helpers
-  const handleQuickLogin = async (email: string, pass: string) => {
-    setLoginEmailOrPhone(email);
-    setLoginPassword(pass);
-    setIsLoggingIn(true);
-    const res = await onLoginSubmit(email, pass);
-    setIsLoggingIn(false);
-    if (res.success && res.user) {
-      onLoginSuccess(res.user);
-    }
-  };
-
   return (
     <div className="max-w-xl mx-auto space-y-6 pt-4">
       {/* Tab Switcher */}
@@ -175,7 +163,7 @@ export default function HalamanAuth({ onLoginSubmit, onRegisterSubmit, onLoginSu
                 <input
                   type="text"
                   required
-                  placeholder="admin@rejekimacan.com atau 08123456789"
+                  placeholder="Masukkan email atau nomor WhatsApp Anda"
                   value={loginEmailOrPhone}
                   onChange={(e) => setLoginEmailOrPhone(e.target.value)}
                   className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900 font-medium focus:outline-none focus:border-amber-500 focus:bg-white"

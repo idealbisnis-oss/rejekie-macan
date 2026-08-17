@@ -9,10 +9,16 @@ const PORT = 3000;
 app.use(express.json({ limit: "20mb" }));
 app.use(express.urlencoded({ limit: "20mb", extended: true }));
 
-// Ensure data directory exists
-const DATA_DIR = path.join(process.cwd(), "data");
-if (!fs.existsSync(DATA_DIR)) {
-  fs.mkdirSync(DATA_DIR, { recursive: true });
+// Ensure data directory exists (support local & serverless writable /tmp)
+const IS_SERVERLESS = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.NETLIFY);
+const DATA_DIR = IS_SERVERLESS ? "/tmp" : path.join(process.cwd(), "data");
+
+try {
+  if (!fs.existsSync(DATA_DIR)) {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+  }
+} catch (e) {
+  // Silent fallback for restricted environments
 }
 
 const DB_FILE = path.join(DATA_DIR, "database.json");
@@ -210,16 +216,25 @@ const INITIAL_DATA = {
   ]
 };
 
+// Database in-memory cache for serverless environments
+let inMemoryDB: any = null;
+
 // Database helper functions
 function readDB() {
   try {
-    if (!fs.existsSync(DB_FILE)) {
-      fs.writeFileSync(DB_FILE, JSON.stringify(INITIAL_DATA, null, 2), "utf-8");
-      return INITIAL_DATA;
+    if (!inMemoryDB) {
+      if (fs.existsSync(DB_FILE)) {
+        const content = fs.readFileSync(DB_FILE, "utf-8");
+        inMemoryDB = JSON.parse(content);
+      } else {
+        inMemoryDB = JSON.parse(JSON.stringify(INITIAL_DATA));
+        try {
+          fs.writeFileSync(DB_FILE, JSON.stringify(INITIAL_DATA, null, 2), "utf-8");
+        } catch (e) {}
+      }
     }
-    const content = fs.readFileSync(DB_FILE, "utf-8");
-    const db = JSON.parse(content);
 
+    const db = inMemoryDB;
     const now = Date.now();
     let changed = false;
 
@@ -265,15 +280,17 @@ function readDB() {
     return db;
   } catch (err) {
     console.error("Error reading database:", err);
-    return INITIAL_DATA;
+    if (!inMemoryDB) inMemoryDB = JSON.parse(JSON.stringify(INITIAL_DATA));
+    return inMemoryDB;
   }
 }
 
 function writeDB(data: any) {
+  inMemoryDB = data;
   try {
     fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2), "utf-8");
   } catch (err) {
-    console.error("Error writing database:", err);
+    // In serverless / read-only environment, in-memory cache continues serving
   }
 }
 
@@ -1118,7 +1135,9 @@ app.get("/api/admin/stats", (req, res) => {
   });
 });
 
-// Start Express Server with Vite middleware
+// Export app for serverless & start server for standalone execution
+export default app;
+
 async function startServer() {
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
@@ -1139,4 +1158,6 @@ async function startServer() {
   });
 }
 
-startServer();
+if (!process.env.VERCEL && !process.env.AWS_LAMBDA_FUNCTION_NAME) {
+  startServer();
+}

@@ -3,13 +3,14 @@ import {
   Users, CheckCircle2, XCircle, ShieldAlert, FileText, Database, 
   Trash2, RefreshCw, Send, Check, AlertTriangle, Layers, Building2, UserCheck, Clock, CheckCircle,
   Coins, Eye, QrCode, Building, ExternalLink, History, MessageSquare, Lock, Unlock, ShieldCheck,
-  Settings, Key, UserPlus, RotateCcw
+  Settings, Key, UserPlus, RotateCcw, PlusCircle, Upload, Sparkles, MapPin, Tag, DollarSign, Image as ImageIcon
 } from "lucide-react";
 import { 
   apiGetUsers, apiUpdateUserKYC, apiDeleteUser, apiGetAdminStats, 
   apiDeleteProject, apiGetInterests, apiUpdateInterest, apiModerateProject,
   apiGetDeposits, apiApproveDeposit, apiRejectDeposit, apiSendInterestChatMessage,
-  apiAdminResetWebsite, apiAdminUpdateCredentials, apiAdminCreateAccount
+  apiAdminResetWebsite, apiAdminUpdateCredentials, apiAdminCreateAccount,
+  apiCreateProject
 } from "../services/api";
 
 interface DashboardAdminProps {
@@ -54,6 +55,106 @@ export default function DashboardAdmin({ supplyListings, demandListings, onRefre
   const [resetModalType, setResetModalType] = useState<"FULL_FACTORY_RESET" | "TRANSACTIONS_ONLY" | "LISTINGS_ONLY" | null>(null);
   const [resetConfirmText, setResetConfirmText] = useState<string>("");
   const [isExecutingReset, setIsExecutingReset] = useState<boolean>(false);
+
+  // State Admin Pos Project (Supply & Demand)
+  const [showAdminPostModal, setShowAdminPostModal] = useState<boolean>(false);
+  const [adminProjectType, setAdminProjectType] = useState<"supply" | "demand">("supply");
+  const [adminTitle, setAdminTitle] = useState<string>("");
+  const [adminCategory, setAdminCategory] = useState<string>("Lahan / Tanah Komersial");
+  const [adminLocation, setAdminLocation] = useState<string>("Jakarta & Sekitarnya");
+  const [adminPrice, setAdminPrice] = useState<string>("");
+  const [adminBudgetMin, setAdminBudgetMin] = useState<string>("");
+  const [adminBudgetMax, setAdminBudgetMax] = useState<string>("");
+  const [adminPaymentSystem, setAdminPaymentSystem] = useState<string>("Cash Keras / Bertahap");
+  const [adminSpecifications, setAdminSpecifications] = useState<string>("");
+  const [adminImageUrl, setAdminImageUrl] = useState<string>("");
+  const [adminIsPremium, setAdminIsPremium] = useState<boolean>(true);
+  const [isSubmittingAdminProject, setIsSubmittingAdminProject] = useState<boolean>(false);
+
+  // Handler Upload Foto Proyek Admin
+  const handleAdminImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 10 * 1024 * 1024) {
+      showToast("Ukuran foto maksimal 10MB", "error");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        let width = img.width;
+        let height = img.height;
+        const maxDim = 1200;
+        if (width > maxDim || height > maxDim) {
+          if (width > height) {
+            height = Math.round((height * maxDim) / width);
+            width = maxDim;
+          } else {
+            width = Math.round((width * maxDim) / height);
+            height = maxDim;
+          }
+        }
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        ctx?.drawImage(img, 0, 0, width, height);
+        const resizedDataUrl = canvas.toDataURL("image/jpeg", 0.82);
+        setAdminImageUrl(resizedDataUrl);
+      };
+      img.src = event.target?.result as string;
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // Handler Submit Proyek Admin
+  const handleAdminSubmitProject = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!adminTitle.trim() || !adminSpecifications.trim()) {
+      showToast("Harap isi judul dan deskripsi spesifikasi proyek!", "error");
+      return;
+    }
+
+    setIsSubmittingAdminProject(true);
+    try {
+      const res = await apiCreateProject({
+        projectType: adminProjectType,
+        title: adminTitle.trim(),
+        category: adminCategory,
+        location: adminLocation || "Indonesia",
+        specifications: adminSpecifications.trim(),
+        criteria: adminSpecifications.trim(),
+        price: adminPrice ? Number(adminPrice) : 0,
+        budgetMin: adminBudgetMin ? Number(adminBudgetMin) : 0,
+        budgetMax: adminBudgetMax ? Number(adminBudgetMax) : 0,
+        paymentSystem: adminPaymentSystem,
+        brokerId: currentUser?.id || "admin-1",
+        imageUrl: adminImageUrl || (adminProjectType === "supply" ? "https://images.unsplash.com/photo-1500382017468-9049fed747ef?auto=format&fit=crop&q=80&w=1200" : undefined),
+        isPremium: adminIsPremium
+      });
+
+      if (res.success) {
+        showToast(res.message || "✓ Proyek berhasil dipublikasikan sebagai Admin Terverifikasi (A1)!");
+        setShowAdminPostModal(false);
+        setAdminTitle("");
+        setAdminSpecifications("");
+        setAdminPrice("");
+        setAdminBudgetMin("");
+        setAdminBudgetMax("");
+        setAdminImageUrl("");
+        onRefreshData();
+      } else {
+        showToast(res.message || "Gagal memposting proyek admin.", "error");
+      }
+    } catch (err) {
+      showToast("Terjadi kesalahan saat memposting proyek.", "error");
+    } finally {
+      setIsSubmittingAdminProject(false);
+    }
+  };
 
   useEffect(() => {
     if (currentUser) {
@@ -433,17 +534,27 @@ export default function DashboardAdmin({ supplyListings, demandListings, onRefre
           </p>
         </div>
 
-        <button
-          onClick={() => {
-            loadData();
-            onRefreshData();
-          }}
-          disabled={isLoading}
-          className="self-start md:self-auto px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black rounded-xl shadow-md transition-all cursor-pointer flex items-center gap-2"
-        >
-          <RefreshCw size={14} className={isLoading ? "animate-spin" : ""} />
-          <span>Sync Admin Database</span>
-        </button>
+        <div className="flex items-center gap-2.5 flex-wrap self-start md:self-auto">
+          <button
+            onClick={() => setShowAdminPostModal(true)}
+            className="px-4 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 text-xs font-black rounded-xl shadow-md transition-all cursor-pointer flex items-center gap-1.5 hover:scale-105 active:scale-95"
+          >
+            <PlusCircle size={15} />
+            <span>+ Posting Proyek (Admin)</span>
+          </button>
+
+          <button
+            onClick={() => {
+              loadData();
+              onRefreshData();
+            }}
+            disabled={isLoading}
+            className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-white text-xs font-black rounded-xl shadow-md border border-slate-700 transition-all cursor-pointer flex items-center gap-2"
+          >
+            <RefreshCw size={14} className={isLoading ? "animate-spin text-amber-400" : "text-amber-400"} />
+            <span>Sync Admin Database</span>
+          </button>
+        </div>
       </div>
 
       {/* Stats Cards (Interactive Columns) */}
@@ -856,6 +967,32 @@ export default function DashboardAdmin({ supplyListings, demandListings, onRefre
       {/* TAB CONTENT 2: PROJECTS & MODERATION */}
       {activeTab === "PROJECTS" && (
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden space-y-5 p-4 sm:p-6">
+          {/* Admin Fast Post Banner */}
+          <div className="bg-gradient-to-r from-amber-500/15 via-amber-500/5 to-slate-50 p-4 sm:p-5 rounded-2xl border border-amber-300 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-3.5">
+              <div className="w-11 h-11 rounded-2xl bg-amber-500 text-slate-950 flex items-center justify-center font-black shadow-md shrink-0">
+                <Sparkles size={22} />
+              </div>
+              <div>
+                <h4 className="font-black text-slate-900 text-sm sm:text-base flex items-center gap-2">
+                  <span>Posting Proyek Baru Sebagai Admin</span>
+                  <span className="px-2 py-0.5 bg-amber-500 text-slate-950 rounded-md text-[10px] font-black uppercase">Auto A1 Verified</span>
+                </h4>
+                <p className="text-xs text-slate-600 mt-0.5">
+                  Publikasikan listing tanah, properti, atau kebutuhan investor langsung disetujui dan live di katalog website.
+                </p>
+              </div>
+            </div>
+
+            <button
+              onClick={() => setShowAdminPostModal(true)}
+              className="px-5 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black rounded-xl text-xs shadow-md cursor-pointer flex items-center gap-2 transition-all hover:scale-105 shrink-0"
+            >
+              <PlusCircle size={16} />
+              <span>+ Buat Listing Proyek</span>
+            </button>
+          </div>
+
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200 pb-3">
             <div>
               <h3 className="text-base font-black text-slate-900">Moderasi & Manajemen Proyek (Limit 10 Hari)</h3>
@@ -2161,6 +2298,241 @@ export default function DashboardAdmin({ supplyListings, demandListings, onRefre
                 {isSavingInterestName ? "Menyimpan..." : "✓ Simpan Perubahan"}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: POSTING PROYEK BARU OLEH ADMIN */}
+      {showAdminPostModal && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 p-6 sm:p-7 max-w-2xl w-full my-8 space-y-5 animate-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-amber-500 text-slate-950 flex items-center justify-center font-black">
+                  <Sparkles size={18} />
+                </div>
+                <div>
+                  <h3 className="font-black text-slate-900 text-base sm:text-lg">Posting Proyek Baru (Admin)</h3>
+                  <p className="text-xs text-slate-500">Listing dipublikasikan dengan status Auto-Approved & Badge A1 Verified.</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowAdminPostModal(false)}
+                className="p-1.5 text-slate-400 hover:text-slate-700 bg-slate-100 rounded-xl cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleAdminSubmitProject} className="space-y-4 text-xs">
+              {/* Tipe Proyek: Supply vs Demand */}
+              <div>
+                <label className="block font-bold text-slate-700 mb-1.5">Pilih Tipe Listing Proyek:</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setAdminProjectType("supply")}
+                    className={`p-3 rounded-xl border text-center font-black transition-all cursor-pointer flex items-center justify-center gap-2 ${
+                      adminProjectType === "supply"
+                        ? "bg-amber-500 text-slate-950 border-amber-600 shadow-sm"
+                        : "bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100"
+                    }`}
+                  >
+                    <span>📦 Penawaran Barang (Supply)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAdminProjectType("demand")}
+                    className={`p-3 rounded-xl border text-center font-black transition-all cursor-pointer flex items-center justify-center gap-2 ${
+                      adminProjectType === "demand"
+                        ? "bg-slate-900 text-amber-400 border-slate-950 shadow-sm"
+                        : "bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100"
+                    }`}
+                  >
+                    <span>🎯 Kebutuhan Buyer (Demand)</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Judul Proyek */}
+              <div className="space-y-1">
+                <label className="block font-bold text-slate-800">
+                  Judul Proyek / Ringkasan Listing <span className="text-red-500">*</span>:
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={adminTitle}
+                  onChange={(e) => setAdminTitle(e.target.value)}
+                  placeholder={adminProjectType === "supply" ? "Contoh: Dijual Lahan Industri 10 Ha Karawang Timur Akses Kontainer" : "Contoh: Dicari Lahan Komersial Min. 3.000m² Pinggir Jalan Utama Surabaya"}
+                  className="w-full p-2.5 bg-slate-50 border border-slate-300 focus:border-amber-500 focus:bg-white rounded-xl font-bold text-slate-900"
+                />
+              </div>
+
+              {/* Kategori & Lokasi */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="block font-bold text-slate-800">Kategori Proyek:</label>
+                  <select
+                    value={adminCategory}
+                    onChange={(e) => setAdminCategory(e.target.value)}
+                    className="w-full p-2.5 bg-slate-50 border border-slate-300 focus:border-amber-500 focus:bg-white rounded-xl font-bold text-slate-900"
+                  >
+                    <option value="Lahan / Tanah Komersial">Lahan / Tanah Komersial</option>
+                    <option value="Tanah Kavling Perumahan">Tanah Kavling Perumahan</option>
+                    <option value="Lahan Industri & Pergudangan">Lahan Industri & Pergudangan</option>
+                    <option value="Hotel / Resort & Wisata">Hotel / Resort & Wisata</option>
+                    <option value="SPBU & Retail Gas">SPBU & Retail Gas</option>
+                    <option value="Pertambangan & Kuari">Pertambangan & Kuari</option>
+                    <option value="Perkebunan Sawit / Pertanian">Perkebunan Sawit / Pertanian</option>
+                    <option value="Gedung Kantor & Ruko Komersial">Gedung Kantor & Ruko Komersial</option>
+                    <option value="Rumah Mewah / Villa">Rumah Mewah / Villa</option>
+                    <option value="Pabrik Siap Operasi">Pabrik Siap Operasi</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="block font-bold text-slate-800">Lokasi / Kota:</label>
+                  <input
+                    type="text"
+                    required
+                    value={adminLocation}
+                    onChange={(e) => setAdminLocation(e.target.value)}
+                    placeholder="Contoh: Jakarta Barat, DKI Jakarta"
+                    className="w-full p-2.5 bg-slate-50 border border-slate-300 focus:border-amber-500 focus:bg-white rounded-xl font-bold text-slate-900"
+                  />
+                </div>
+              </div>
+
+              {/* Harga atau Rentang Budget */}
+              {adminProjectType === "supply" ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="block font-bold text-slate-800">Nilai Harga Penawaran (Rp):</label>
+                    <input
+                      type="number"
+                      value={adminPrice}
+                      onChange={(e) => setAdminPrice(e.target.value)}
+                      placeholder="Contoh: 15000000000 (15 Milyar)"
+                      className="w-full p-2.5 bg-slate-50 border border-slate-300 focus:border-amber-500 focus:bg-white rounded-xl font-bold text-slate-900"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="block font-bold text-slate-800">Sistem Pembayaran:</label>
+                    <input
+                      type="text"
+                      value={adminPaymentSystem}
+                      onChange={(e) => setAdminPaymentSystem(e.target.value)}
+                      placeholder="Contoh: Cash Keras / Notaris"
+                      className="w-full p-2.5 bg-slate-50 border border-slate-300 focus:border-amber-500 focus:bg-white rounded-xl font-bold text-slate-900"
+                    />
+                  </div>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="block font-bold text-slate-800">Budget Minimal (Rp):</label>
+                    <input
+                      type="number"
+                      value={adminBudgetMin}
+                      onChange={(e) => setAdminBudgetMin(e.target.value)}
+                      placeholder="Contoh: 5000000000 (5 Milyar)"
+                      className="w-full p-2.5 bg-slate-50 border border-slate-300 focus:border-amber-500 focus:bg-white rounded-xl font-bold text-slate-900"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="block font-bold text-slate-800">Budget Maksimal (Rp):</label>
+                    <input
+                      type="number"
+                      value={adminBudgetMax}
+                      onChange={(e) => setAdminBudgetMax(e.target.value)}
+                      placeholder="Contoh: 20000000000 (20 Milyar)"
+                      className="w-full p-2.5 bg-slate-50 border border-slate-300 focus:border-amber-500 focus:bg-white rounded-xl font-bold text-slate-900"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Deskripsi & Spesifikasi */}
+              <div className="space-y-1">
+                <label className="block font-bold text-slate-800">
+                  {adminProjectType === "supply" ? "Deskripsi & Spesifikasi Lahan / Properti" : "Kriteria & Syarat Kebutuhan Buyer"} <span className="text-red-500">*</span>:
+                </label>
+                <textarea
+                  rows={3}
+                  required
+                  value={adminSpecifications}
+                  onChange={(e) => setAdminSpecifications(e.target.value)}
+                  placeholder={adminProjectType === "supply" ? "Jelaskan luas tanah, legalitas SHM/HGB, lebar muka, zonasi tata ruang, kontur, akses jalan, dsb." : "Jelaskan kriteria lahan yang dicari investor, legalitas yang diminta, akses kontainer, radius lokasi, dll."}
+                  className="w-full p-2.5 bg-slate-50 border border-slate-300 focus:border-amber-500 focus:bg-white rounded-xl font-medium text-slate-900 resize-y"
+                />
+              </div>
+
+              {/* Foto Proyek (Khusus Supply atau Opsional Demand) */}
+              <div className="space-y-2 p-3 bg-slate-50 rounded-2xl border border-slate-200">
+                <label className="block font-bold text-slate-800 flex items-center justify-between">
+                  <span>Foto Proyek / Banner Listing:</span>
+                  {adminImageUrl && (
+                    <button
+                      type="button"
+                      onClick={() => setAdminImageUrl("")}
+                      className="text-[11px] text-red-600 hover:underline cursor-pointer"
+                    >
+                      Hapus Foto
+                    </button>
+                  )}
+                </label>
+
+                {adminImageUrl ? (
+                  <div className="relative w-full h-36 rounded-xl overflow-hidden border border-slate-300 shadow-xs">
+                    <img src={adminImageUrl} alt="Preview" className="w-full h-full object-cover" />
+                  </div>
+                ) : (
+                  <div className="flex flex-col sm:flex-row items-center gap-2">
+                    <label className="flex-1 w-full p-3 bg-white border border-dashed border-amber-400 hover:border-amber-500 rounded-xl flex items-center justify-center gap-2 cursor-pointer transition-colors text-amber-900 font-bold">
+                      <Upload size={16} className="text-amber-600" />
+                      <span>Upload Foto dari Perangkat</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={handleAdminImageUpload}
+                        className="hidden"
+                      />
+                    </label>
+                  </div>
+                )}
+
+                <div className="space-y-1 pt-1">
+                  <label className="text-[11px] text-slate-500">Atau masukkan Link URL Foto langsung:</label>
+                  <input
+                    type="url"
+                    value={adminImageUrl}
+                    onChange={(e) => setAdminImageUrl(e.target.value)}
+                    placeholder="https://images.unsplash.com/photo-..."
+                    className="w-full p-2 bg-white border border-slate-300 focus:border-amber-500 rounded-xl text-[11px] text-slate-800"
+                  />
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="pt-2 flex items-center justify-end gap-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setShowAdminPostModal(false)}
+                  className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs cursor-pointer"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmittingAdminProject}
+                  className="px-6 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black rounded-xl text-xs shadow-md cursor-pointer flex items-center gap-2 transition-all hover:scale-105"
+                >
+                  <Sparkles size={15} />
+                  <span>{isSubmittingAdminProject ? "Mempublikasikan..." : "🚀 Publikasikan Proyek Sebagai Admin"}</span>
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
