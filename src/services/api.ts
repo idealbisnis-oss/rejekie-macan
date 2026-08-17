@@ -1,7 +1,7 @@
 import { UserSession, SupplyListing, DemandListing, ListingInterest } from "../types";
 import { INITIAL_SEED_DATA } from "../data/initialData";
 
-const STORAGE_KEY_DB = "rejekimacan_local_db_v1";
+const STORAGE_KEY_DB = "rejekimacan_local_db_v2_clean";
 
 // Helper to get local persistent state
 function getLocalDB() {
@@ -261,10 +261,13 @@ export async function apiCreateProject(projectData: any) {
   const db = getLocalDB();
   const isSupply = projectData.projectType === "supply";
   const newId = `${isSupply ? "sup" : "dem"}-${Date.now()}`;
+  const brokerUser = db.users?.find((u: any) => u.id === projectData.brokerId);
+  const brokerUsername = projectData.brokerUsername || brokerUser?.username || brokerUser?.fullName || projectData.brokerId;
 
   const newProject = {
     ...projectData,
     id: newId,
+    brokerUsername,
     moderationStatus: projectData.brokerId?.includes("admin") ? "APPROVED" : "APPROVED",
     viewCount: 1,
     isHot: Boolean(projectData.isPremium),

@@ -245,6 +245,8 @@ export default function DashboardMember({
       budgetMax: budgetMax ? Number(budgetMax) : 0,
       paymentSystem,
       brokerId: currentUser.id,
+      brokerName: currentUser.fullName || currentUser.username,
+      brokerUsername: currentUser.username || currentUser.fullName,
       imageUrl
     });
 

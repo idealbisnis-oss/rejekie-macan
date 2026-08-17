@@ -32,197 +32,29 @@ try {
 
 const DB_FILE = path.join(DATA_DIR, "database.json");
 
-// Default Initial Seed Data
+// Default Initial Seed Data (Clean State for 10 User Testing)
 const INITIAL_DATA = {
   users: [
     {
       id: "admin-1",
       fullName: "Super Admin Platform",
-      username: "Super Admin",
+      username: "admin_utama",
       email: "admin@rejekimacan.com",
-      password: "admin123", // For demo/initial access
+      password: "admin123", // For initial admin access
       phoneNumber: "081299008811",
       role: "ADMIN",
       kycStatus: "VERIFIED",
       ktpNumber: "3171010022330001",
       ktpImageUrl: "https://images.unsplash.com/photo-1589829545856-d10d557cf95f?auto=format&fit=crop&q=80&w=600",
       organization: "Rejeki Macan HQ",
-      registeredAt: new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString(),
-      balance: 1000000
-    },
-    {
-      id: "user-1",
-      fullName: "Hendra Wijaya",
-      username: "Broker Hendra",
-      email: "hendra@broker.id",
-      password: "user123",
-      phoneNumber: "081122334455",
-      role: "MAKELAR_BARANG",
-      kycStatus: "VERIFIED",
-      ktpNumber: "3201018899000002",
-      ktpImageUrl: "https://images.unsplash.com/photo-1589829545856-d10d557cf95f?auto=format&fit=crop&q=80&w=600",
-      organization: "Bumi Sejahtera Property",
-      registeredAt: new Date(Date.now() - 14 * 24 * 3600 * 1000).toISOString(),
-      balance: 150000
-    },
-    {
-      id: "user-2",
-      fullName: "Amiruddin",
-      username: "Amir Buyer Agent",
-      email: "amir@buyeragent.com",
-      password: "user123",
-      phoneNumber: "081233445566",
-      role: "MAKELAR_BUYER",
-      kycStatus: "VERIFIED",
-      ktpNumber: "3515027788990003",
-      ktpImageUrl: "https://images.unsplash.com/photo-1589829545856-d10d557cf95f?auto=format&fit=crop&q=80&w=600",
-      organization: "Jawa Investor Club",
-      registeredAt: new Date(Date.now() - 10 * 24 * 3600 * 1000).toISOString(),
-      balance: 200000
-    },
-    {
-      id: "user-3",
-      fullName: "Budi Santoso",
-      username: "Budi Properti",
-      email: "budi@newmember.com",
-      password: "user123",
-      phoneNumber: "081987654321",
-      role: "MAKELAR_BARANG",
-      kycStatus: "PENDING",
-      ktpNumber: "3172023344550004",
-      ktpImageUrl: "https://images.unsplash.com/photo-1589829545856-d10d557cf95f?auto=format&fit=crop&q=80&w=600",
-      organization: "Mandiri Brokerage",
-      registeredAt: new Date(Date.now() - 1 * 24 * 3600 * 1000).toISOString(),
-      balance: 0
+      registeredAt: new Date().toISOString(),
+      balance: 10000000
     }
   ],
-  supplyListings: [
-    {
-      id: "SUP-001",
-      title: "Lahan Industri Cikarang Barat 5.2 Hektar (Lahan Kosong Siap Bangun)",
-      category: "Properti & Tanah",
-      specifications: "Sertifikat SHGB atas nama PT, Zoni Industri, Lebar muka 120m, Akses Tol KM 31 (2km)",
-      location: "Bekasi, Jawa Barat",
-      price: 156000000000,
-      brokerId: "user-1",
-      brokerName: "Broker Hendra",
-      brokerPhone: "081122334455",
-      status: "VERIFIED",
-      imageUrl: "https://images.unsplash.com/photo-1500382017468-9049fed747ef?auto=format&fit=crop&q=80&w=1200",
-      createdAt: new Date(Date.now() - 5 * 24 * 3600 * 1000).toISOString(),
-      expiresAt: new Date(Date.now() + 9 * 24 * 3600 * 1000).toISOString(),
-      viewsCount: 142,
-      isPremium: true,
-      premiumUntil: new Date(Date.now() + 10 * 24 * 3600 * 1000).toISOString(),
-      isA1Verified: true
-    },
-    {
-      id: "SUP-002",
-      title: "Stock CPO Off-Spec / High FFA 500 Metric Ton (Komoditas)",
-      category: "Komoditas & Hasil Bumi",
-      specifications: "FFA 8-12%, Moisture max 0.5%, Impurities max 0.2%, Franco Gudang Medan",
-      location: "Medan, Sumatera Utara",
-      price: 6250000000,
-      brokerId: "user-1",
-      brokerName: "Broker Hendra",
-      brokerPhone: "081122334455",
-      status: "VERIFIED",
-      imageUrl: "https://images.unsplash.com/photo-1615811361523-6bd03d7748e7?auto=format&fit=crop&q=80&w=1200",
-      createdAt: new Date(Date.now() - 2 * 24 * 3600 * 1000).toISOString(),
-      expiresAt: new Date(Date.now() + 12 * 24 * 3600 * 1000).toISOString(),
-      viewsCount: 89,
-      isPremium: false,
-      isA1Verified: true
-    },
-    {
-      id: "SUP-003",
-      title: "Scrap Besi Berat (Heavy Melting Scrap) 1,200 Ton Eks Pabrik Tekstil",
-      category: "Besi & Logam Scrap",
-      specifications: "Besi H-Beam, Plate 12mm-25mm, Tanpa timbal/radiasi, Potongan max 1.5m",
-      location: "Surabaya, Jawa Timur",
-      price: 7800000000,
-      brokerId: "user-3",
-      brokerName: "Budi Properti",
-      brokerPhone: "081987654321",
-      status: "VERIFIED",
-      imageUrl: "https://images.unsplash.com/photo-1504917595217-d4dc5ebe6122?auto=format&fit=crop&q=80&w=1200",
-      createdAt: new Date(Date.now() - 1 * 24 * 3600 * 1000).toISOString(),
-      expiresAt: new Date(Date.now() + 13 * 24 * 3600 * 1000).toISOString(),
-      viewsCount: 45,
-      isPremium: false,
-      isA1Verified: false
-    }
-  ],
-  demandListings: [
-    {
-      id: "DEM-001",
-      title: "Dicari: Buyer Siap Dana Lahan Pergudangan / Cold Storage Min 2 Ha",
-      category: "Properti & Tanah",
-      criteria: "Zoning Industri/Komersial, Akses kontainer 40ft, Bebas banjir, Sertifikat SHM/SHGB clear",
-      budgetMin: 30000000000,
-      budgetMax: 75000000000,
-      paymentSystem: "Cash Bertahap / KPR Bank Mandiri Valid",
-      brokerId: "user-2",
-      brokerName: "Amir Buyer Agent",
-      brokerPhone: "081233445566",
-      status: "VERIFIED",
-      createdAt: new Date(Date.now() - 3 * 24 * 3600 * 1000).toISOString(),
-      expiresAt: new Date(Date.now() + 11 * 24 * 3600 * 1000).toISOString(),
-      isPremium: true,
-      fundingCriteria: "Buyer A1 Investor Konsorsium Jakarta - LOI Siap Terbit"
-    },
-    {
-      id: "DEM-002",
-      title: "Dibutuhkan Pasokan Rutin Beras IR64 Medium 50 Ton / Minggu",
-      category: "Komoditas & Hasil Bumi",
-      criteria: "Kadar air max 14%, pecahan max 15%, Kemasan polos 50kg, Kontrak 6 bulan",
-      budgetMin: 500000000,
-      budgetMax: 650000000,
-      paymentSystem: "CBD (Cash Before Delivery) atau SKBDN",
-      brokerId: "user-2",
-      brokerName: "Amir Buyer Agent",
-      brokerPhone: "081233445566",
-      status: "VERIFIED",
-      createdAt: new Date(Date.now() - 6 * 24 * 3600 * 1000).toISOString(),
-      expiresAt: new Date(Date.now() + 8 * 24 * 3600 * 1000).toISOString(),
-      isPremium: false,
-      fundingCriteria: "Supplier Grosir Pasar Induk Cipinang"
-    }
-  ],
-  interests: [
-    {
-      id: "INT-101",
-      listingId: "SUP-001",
-      listingTitle: "Lahan Industri Cikarang Barat 5.2 Hektar",
-      listingType: "supply",
-      ownerBrokerId: "user-1",
-      ownerBrokerName: "Broker Hendra",
-      interestedBrokerId: "user-2",
-      interestedBrokerName: "Amir Buyer Agent",
-      interestedBrokerPhone: "081233445566",
-      createdAt: new Date(Date.now() - 1 * 24 * 3600 * 1000).toISOString(),
-      status: "VERIFIED_BY_ADMIN",
-      userMessage: "Saya punya buyer konsorsium yang mencari lahan industri di Cikarang. Dana siap di atas 100M.",
-      adminNotes: "Buyer & SKBDN terverifikasi valid oleh Admin Platform."
-    }
-  ],
-  deposits: [
-    {
-      id: "DEP-1001",
-      userId: "user-1",
-      userName: "Hendra Wijaya",
-      userEmail: "hendra@broker.id",
-      userPhone: "081122334455",
-      amount: 100000,
-      paymentMethod: "QRIS",
-      paymentCode: "QRIS-RM-1001",
-      senderName: "Hendra W",
-      proofUrl: "https://images.unsplash.com/photo-1559526324-4b87b5e36e44?auto=format&fit=crop&q=80&w=400",
-      notes: "Transfer via QRIS Bank BCA",
-      status: "PENDING",
-      createdAt: new Date(Date.now() - 2 * 3600 * 1000).toISOString()
-    }
-  ]
+  supplyListings: [],
+  demandListings: [],
+  interests: [],
+  deposits: []
 };
 
 // Database in-memory cache for serverless environments
@@ -277,6 +109,11 @@ function readDB() {
         s.moderationStatus = "APPROVED";
         changed = true;
       }
+      if (!s.brokerUsername) {
+        const u = (db.users || []).find((usr: any) => usr.id === s.brokerId);
+        s.brokerUsername = u?.username || u?.fullName || s.brokerId;
+        changed = true;
+      }
       return true;
     });
 
@@ -288,6 +125,11 @@ function readDB() {
       }
       if (!d.moderationStatus) {
         d.moderationStatus = "APPROVED";
+        changed = true;
+      }
+      if (!d.brokerUsername) {
+        const u = (db.users || []).find((usr: any) => usr.id === d.brokerId);
+        d.brokerUsername = u?.username || u?.fullName || d.brokerId;
         changed = true;
       }
       return true;
@@ -641,6 +483,7 @@ app.post("/api/projects", (req, res) => {
   const db = readDB();
   const broker = db.users.find((u: any) => u.id === brokerId);
   const brokerName = broker ? broker.fullName : "Member Platform";
+  const brokerUsername = broker?.username || (broker ? broker.fullName : brokerId);
   const brokerPhone = broker ? broker.phoneNumber : "08123456789";
   const initialModeration = broker?.role === "ADMIN" ? "APPROVED" : "PENDING";
 
@@ -654,6 +497,7 @@ app.post("/api/projects", (req, res) => {
       price: Number(price) || 0,
       brokerId,
       brokerName,
+      brokerUsername,
       brokerPhone,
       status: "VERIFIED",
       moderationStatus: initialModeration,
@@ -684,6 +528,7 @@ app.post("/api/projects", (req, res) => {
       paymentSystem: paymentSystem || "Cash Bertahap",
       brokerId,
       brokerName,
+      brokerUsername,
       brokerPhone,
       status: "VERIFIED",
       moderationStatus: initialModeration,

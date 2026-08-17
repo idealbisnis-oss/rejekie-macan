@@ -58,6 +58,7 @@ export interface SupplyListing {
   price: number;
   brokerId: string;
   brokerName: string;
+  brokerUsername?: string;
   brokerPhone: string;
   status: ListingStatus;
   moderationStatus?: ModerationStatus; // Status Moderasi Admin: PENDING | APPROVED | REJECTED
@@ -82,6 +83,7 @@ export interface DemandListing {
   paymentSystem: string;
   brokerId: string;
   brokerName: string;
+  brokerUsername?: string;
   brokerPhone: string;
   status: ListingStatus;
   moderationStatus?: ModerationStatus; // Status Moderasi Admin: PENDING | APPROVED | REJECTED

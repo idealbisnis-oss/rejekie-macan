@@ -1066,7 +1066,7 @@ export default function DashboardAdmin({ supplyListings, demandListings, onRefre
                         
                         <div className="flex items-center justify-between text-[11px] font-mono text-slate-600 pt-1 border-t border-slate-200">
                           <span className="font-bold text-slate-900">Rp {s.price?.toLocaleString("id-ID")}</span>
-                          <span>Broker: {s.brokerName}</span>
+                          <span>Broker: <strong className="font-mono text-slate-800">@{s.brokerUsername || s.brokerId}</strong></span>
                         </div>
 
                         {s.rejectionReason && (
@@ -1154,7 +1154,7 @@ export default function DashboardAdmin({ supplyListings, demandListings, onRefre
 
                         <div className="flex items-center justify-between text-[11px] font-mono text-slate-600 pt-1 border-t border-slate-200">
                           <span className="font-bold text-emerald-800">Budget Max: Rp {d.budgetMax?.toLocaleString("id-ID")}</span>
-                          <span>Broker: {d.brokerName}</span>
+                          <span>Broker: <strong className="font-mono text-slate-800">@{d.brokerUsername || d.brokerId}</strong></span>
                         </div>
 
                         {d.rejectionReason && (

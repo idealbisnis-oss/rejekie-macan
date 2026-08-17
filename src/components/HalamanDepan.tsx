@@ -335,7 +335,7 @@ export default function HalamanDepan({
                     {/* Footer Info & Actions */}
                     <div className="pt-3 border-t border-slate-100 space-y-2.5">
                       <div className="flex items-center justify-between text-[11px]">
-                        <span className="text-slate-500">Broker: <strong className="text-slate-700">{item.brokerName}</strong></span>
+                        <span className="text-slate-500">Broker: <strong className="text-slate-800 font-mono font-bold">@{item.brokerUsername || item.brokerId}</strong></span>
                         <span className="text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
                           Kontak Terproteksi
                         </span>
@@ -410,7 +410,7 @@ export default function HalamanDepan({
                     {/* Footer Info & Actions */}
                     <div className="pt-3 border-t border-slate-100 space-y-2.5">
                       <div className="flex items-center justify-between text-[11px]">
-                        <span className="text-slate-500">Broker Buyer: <strong className="text-slate-700">{item.brokerName}</strong></span>
+                        <span className="text-slate-500">Broker Buyer: <strong className="text-slate-800 font-mono font-bold">@{item.brokerUsername || item.brokerId}</strong></span>
                         <span className="text-amber-700 font-bold bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
                           A1 Buyer Ready
                         </span>
@@ -557,7 +557,7 @@ export default function HalamanDepan({
                     KYC: {currentUser?.kycStatus || "UNVERIFIED"}
                   </span>
                 </div>
-                <p className="text-slate-500">Pemilik Proyek: <strong className="text-slate-800">{interestProject.brokerName}</strong></p>
+                <p className="text-slate-500">Pemilik Proyek: <strong className="text-slate-800 font-mono font-bold">@{interestProject.brokerUsername || interestProject.brokerId}</strong></p>
                 <p className="text-slate-500">Saldo Saldo Deposit: <strong className="text-emerald-700">Rp {(currentUser?.balance || 0).toLocaleString("id-ID")}</strong></p>
               </div>
 

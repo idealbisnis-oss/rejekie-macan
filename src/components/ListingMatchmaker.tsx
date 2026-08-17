@@ -259,7 +259,7 @@ export default function ListingMatchmaker({
                   </div>
                   <div className="pt-2 flex items-center gap-1.5">
                     <div className="w-5 h-5 rounded-full bg-slate-200 flex items-center justify-center text-[10px] font-bold text-slate-600">S</div>
-                    <span className="text-[11px] font-semibold text-slate-600">{match.supply.brokerName}</span>
+                    <span className="text-[11px] font-bold text-slate-700 font-mono">@{match.supply.brokerUsername || match.supply.brokerId}</span>
                   </div>
                 </div>
 
@@ -292,7 +292,7 @@ export default function ListingMatchmaker({
                   </div>
                   <div className="pt-2 flex items-center gap-1.5">
                     <div className="w-5 h-5 rounded-full bg-slate-200 flex items-center justify-center text-[10px] font-bold text-slate-600">B</div>
-                    <span className="text-[11px] font-semibold text-slate-600">{match.demand.brokerName}</span>
+                    <span className="text-[11px] font-bold text-slate-700 font-mono">@{match.demand.brokerUsername || match.demand.brokerId}</span>
                   </div>
                 </div>
 
