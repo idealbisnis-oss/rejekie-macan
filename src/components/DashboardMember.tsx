@@ -11,6 +11,8 @@ import { UserSession, DepositRequest, PaymentMethod } from "../types";
 import { apiTopUpDeposit, apiExtendProject, apiSubmitDeposit, apiGetDeposits, apiSendInterestChatMessage, apiUpdateUserKYC, apiUpdateInterest } from "../services/api";
 
 import { PROJECT_CATEGORIES } from "../data/categories";
+import { RupiahInput } from "./RupiahInput";
+import { parseRupiahInput } from "../utils/currencyUtils";
 
 interface DashboardMemberProps {
   currentUser: UserSession;
@@ -236,9 +238,9 @@ export default function DashboardMember({
       category,
       location: location || "Indonesia",
       specifications,
-      price: price ? Number(price) : 0,
-      budgetMin: budgetMin ? Number(budgetMin) : 0,
-      budgetMax: budgetMax ? Number(budgetMax) : 0,
+      price: price ? parseRupiahInput(price) : 0,
+      budgetMin: budgetMin ? parseRupiahInput(budgetMin) : 0,
+      budgetMax: budgetMax ? parseRupiahInput(budgetMax) : 0,
       paymentSystem,
       brokerId: currentUser.id,
       brokerName: currentUser.fullName || currentUser.username,
@@ -742,34 +744,28 @@ export default function DashboardMember({
             {projectType === "supply" ? (
               <div className="space-y-1">
                 <label className="font-bold text-slate-800 block">Harga Penawaran Total / Per Ton (Rp):</label>
-                <input
-                  type="number"
-                  placeholder="Contoh: 15000000000"
+                <RupiahInput
                   value={price}
-                  onChange={(e) => setPrice(e.target.value)}
-                  className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl font-mono text-slate-900"
+                  onChange={(numVal, strVal) => setPrice(strVal || (numVal ? String(numVal) : ""))}
+                  placeholder="Ketik harga (misal: 200jt, 2.5m, atau 200.000.000)"
                 />
               </div>
             ) : (
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="space-y-1">
                   <label className="font-bold text-slate-800 block">Budget Min (Rp):</label>
-                  <input
-                    type="number"
-                    placeholder="Contoh: 1000000000"
+                  <RupiahInput
                     value={budgetMin}
-                    onChange={(e) => setBudgetMin(e.target.value)}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl font-mono text-slate-900"
+                    onChange={(numVal, strVal) => setBudgetMin(strVal || (numVal ? String(numVal) : ""))}
+                    placeholder="Contoh: 100jt atau 100.000.000"
                   />
                 </div>
                 <div className="space-y-1">
                   <label className="font-bold text-slate-800 block">Budget Max (Rp):</label>
-                  <input
-                    type="number"
-                    placeholder="Contoh: 5000000000"
+                  <RupiahInput
                     value={budgetMax}
-                    onChange={(e) => setBudgetMax(e.target.value)}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl font-mono text-slate-900"
+                    onChange={(numVal, strVal) => setBudgetMax(strVal || (numVal ? String(numVal) : ""))}
+                    placeholder="Contoh: 500jt atau 500.000.000"
                   />
                 </div>
               </div>
@@ -1136,14 +1132,11 @@ export default function DashboardMember({
                 {/* Input Custom Nominal */}
                 <div className="space-y-1">
                   <label className="font-bold text-slate-800 block">Atau Input Nominal Bebas (Rp):</label>
-                  <input
-                    type="number"
-                    min="10000"
-                    step="5000"
+                  <RupiahInput
                     value={topUpAmount}
-                    onChange={(e) => setTopUpAmount(Number(e.target.value))}
-                    className="w-full p-3 bg-slate-50 border border-slate-300 rounded-xl font-mono font-bold text-slate-900 text-sm focus:outline-none focus:border-amber-500"
-                    required
+                    onChange={(numVal) => setTopUpAmount(numVal || 0)}
+                    placeholder="Contoh: 50.000 atau 100rb"
+                    showQuickButtons={false}
                   />
                 </div>
 

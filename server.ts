@@ -57,6 +57,37 @@ const INITIAL_DATA = {
   deposits: []
 };
 
+// Helper to parse currency input (supports 200jt, 2.5m, 200.000.000, numbers)
+function parseCurrency(val: any): number {
+  if (val === undefined || val === null) return 0;
+  if (typeof val === "number") return isNaN(val) ? 0 : val;
+  const raw = String(val).trim().toLowerCase();
+  if (!raw) return 0;
+  const triliunMatch = raw.match(/^([0-9]+(?:[.,][0-9]+)?)\s*(?:t|triliun|trillion)$/i);
+  if (triliunMatch) {
+    const num = parseFloat(triliunMatch[1].replace(",", "."));
+    return isNaN(num) ? 0 : Math.round(num * 1_000_000_000_000);
+  }
+  const miliarMatch = raw.match(/^([0-9]+(?:[.,][0-9]+)?)\s*(?:m|miliar|milyar|b|billion)$/i);
+  if (miliarMatch) {
+    const num = parseFloat(miliarMatch[1].replace(",", "."));
+    return isNaN(num) ? 0 : Math.round(num * 1_000_000_000);
+  }
+  const jutaMatch = raw.match(/^([0-9]+(?:[.,][0-9]+)?)\s*(?:jt|juta|mio|million)$/i);
+  if (jutaMatch) {
+    const num = parseFloat(jutaMatch[1].replace(",", "."));
+    return isNaN(num) ? 0 : Math.round(num * 1_000_000);
+  }
+  const ribuMatch = raw.match(/^([0-9]+(?:[.,][0-9]+)?)\s*(?:rb|ribu|k)$/i);
+  if (ribuMatch) {
+    const num = parseFloat(ribuMatch[1].replace(",", "."));
+    return isNaN(num) ? 0 : Math.round(num * 1_000);
+  }
+  const cleaned = raw.replace(/[^0-9]/g, "");
+  const num = parseInt(cleaned, 10);
+  return isNaN(num) ? 0 : num;
+}
+
 // Database in-memory cache for serverless environments
 let inMemoryDB: any = null;
 let supabaseSynced = false;
@@ -509,7 +540,7 @@ app.post("/api/projects", (req, res) => {
       category,
       specifications: specifications || "",
       location: location || "Indonesia",
-      price: Number(price) || 0,
+      price: parseCurrency(price),
       brokerId,
       brokerName,
       brokerUsername,
@@ -538,8 +569,8 @@ app.post("/api/projects", (req, res) => {
       title,
       category,
       criteria: criteria || specifications || "",
-      budgetMin: Number(budgetMin) || 0,
-      budgetMax: Number(budgetMax) || Number(price) || 0,
+      budgetMin: parseCurrency(budgetMin),
+      budgetMax: parseCurrency(budgetMax) || parseCurrency(price),
       paymentSystem: paymentSystem || "Cash Bertahap",
       brokerId,
       brokerName,

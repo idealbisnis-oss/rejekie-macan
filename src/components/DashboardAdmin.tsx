@@ -13,6 +13,8 @@ import {
   apiCreateProject
 } from "../services/api";
 import { PROJECT_CATEGORIES } from "../data/categories";
+import { RupiahInput } from "./RupiahInput";
+import { parseRupiahInput } from "../utils/currencyUtils";
 
 interface DashboardAdminProps {
   supplyListings: any[];
@@ -128,9 +130,9 @@ export default function DashboardAdmin({ supplyListings, demandListings, onRefre
         location: adminLocation || "Indonesia",
         specifications: adminSpecifications.trim(),
         criteria: adminSpecifications.trim(),
-        price: adminPrice ? Number(adminPrice) : 0,
-        budgetMin: adminBudgetMin ? Number(adminBudgetMin) : 0,
-        budgetMax: adminBudgetMax ? Number(adminBudgetMax) : 0,
+        price: adminPrice ? parseRupiahInput(adminPrice) : 0,
+        budgetMin: adminBudgetMin ? parseRupiahInput(adminBudgetMin) : 0,
+        budgetMax: adminBudgetMax ? parseRupiahInput(adminBudgetMax) : 0,
         paymentSystem: adminPaymentSystem,
         brokerId: currentUser?.id || "admin-1",
         imageUrl: adminImageUrl || (adminProjectType === "supply" ? "https://images.unsplash.com/photo-1500382017468-9049fed747ef?auto=format&fit=crop&q=80&w=1200" : undefined),
@@ -2403,12 +2405,10 @@ export default function DashboardAdmin({ supplyListings, demandListings, onRefre
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="space-y-1">
                     <label className="block font-bold text-slate-800">Nilai Harga Penawaran (Rp):</label>
-                    <input
-                      type="number"
+                    <RupiahInput
                       value={adminPrice}
-                      onChange={(e) => setAdminPrice(e.target.value)}
-                      placeholder="Contoh: 15000000000 (15 Milyar)"
-                      className="w-full p-2.5 bg-slate-50 border border-slate-300 focus:border-amber-500 focus:bg-white rounded-xl font-bold text-slate-900"
+                      onChange={(numVal, strVal) => setAdminPrice(strVal || (numVal ? String(numVal) : ""))}
+                      placeholder="Misal: 200jt, 15m, atau 200.000.000"
                     />
                   </div>
                   <div className="space-y-1">
@@ -2426,22 +2426,18 @@ export default function DashboardAdmin({ supplyListings, demandListings, onRefre
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="space-y-1">
                     <label className="block font-bold text-slate-800">Budget Minimal (Rp):</label>
-                    <input
-                      type="number"
+                    <RupiahInput
                       value={adminBudgetMin}
-                      onChange={(e) => setAdminBudgetMin(e.target.value)}
-                      placeholder="Contoh: 5000000000 (5 Milyar)"
-                      className="w-full p-2.5 bg-slate-50 border border-slate-300 focus:border-amber-500 focus:bg-white rounded-xl font-bold text-slate-900"
+                      onChange={(numVal, strVal) => setAdminBudgetMin(strVal || (numVal ? String(numVal) : ""))}
+                      placeholder="Misal: 5m, 100jt, dsb."
                     />
                   </div>
                   <div className="space-y-1">
                     <label className="block font-bold text-slate-800">Budget Maksimal (Rp):</label>
-                    <input
-                      type="number"
+                    <RupiahInput
                       value={adminBudgetMax}
-                      onChange={(e) => setAdminBudgetMax(e.target.value)}
-                      placeholder="Contoh: 20000000000 (20 Milyar)"
-                      className="w-full p-2.5 bg-slate-50 border border-slate-300 focus:border-amber-500 focus:bg-white rounded-xl font-bold text-slate-900"
+                      onChange={(numVal, strVal) => setAdminBudgetMax(strVal || (numVal ? String(numVal) : ""))}
+                      placeholder="Misal: 20m, 500jt, dsb."
                     />
                   </div>
                 </div>
