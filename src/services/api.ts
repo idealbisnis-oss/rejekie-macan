@@ -556,6 +556,14 @@ export async function apiAdminResetWebsite(resetType: "FULL_FACTORY_RESET" | "TR
   return { success: true, message: "Database berhasil direset sesuai opsi yang dipilih." };
 }
 
+export async function apiGetUserById(userId: string) {
+  const remote = await safeFetchJson(`/api/users/${userId}`);
+  if (remote && remote.user) return remote;
+  const db = getLocalDB();
+  const user = db.users?.find((u: any) => u.id === userId);
+  return { success: Boolean(user), user };
+}
+
 export async function apiAdminUpdateCredentials(data: {
   userId?: string;
   adminId?: string;
@@ -570,9 +578,18 @@ export async function apiAdminUpdateCredentials(data: {
   const remote = await safeFetchJson("/api/admin/update-credentials", {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ ...data, userId: targetId })
+    body: JSON.stringify({ ...data, adminId: targetId, userId: targetId })
   });
-  if (remote && typeof remote.success === "boolean") return remote;
+  if (remote && typeof remote.success === "boolean") {
+    if (remote.user) {
+      // Sync to local
+      const db = getLocalDB();
+      const idx = db.users.findIndex((u: any) => u.id === remote.user.id || u.role === "ADMIN");
+      if (idx >= 0) db.users[idx] = remote.user;
+      saveLocalDB(db);
+    }
+    return remote;
+  }
 
   const db = getLocalDB();
   const admin = db.users.find((u: any) => u.id === targetId || u.role === "ADMIN");

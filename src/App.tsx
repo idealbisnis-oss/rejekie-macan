@@ -11,15 +11,24 @@ import DashboardMember from "./components/DashboardMember";
 import { 
   apiGetProjects, apiCreateProject, apiDeleteProject, 
   apiSubmitInterest, apiGetInterests, apiLogin, apiRegister, 
-  apiGetAdminStats, fetchSystemInfo 
+  apiGetAdminStats, fetchSystemInfo, apiGetUserById 
 } from "./services/api";
+
+const SESSION_STORAGE_KEY = "rejekimacan_user_session";
 
 export default function App() {
   // Navigation tabs requested: "depan" | "auth" | "member" | "admin"
   const [activeTab, setActiveTab] = useState<"depan" | "auth" | "member" | "admin">("depan");
 
-  // Logged-in session state (null if guest)
-  const [currentUser, setCurrentUser] = useState<UserSession | null>(null);
+  // Logged-in session state (restored from local storage if available)
+  const [currentUser, setCurrentUser] = useState<UserSession | null>(() => {
+    try {
+      const saved = localStorage.getItem(SESSION_STORAGE_KEY);
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
 
   // Server Database States
   const [supplyListings, setSupplyListings] = useState<any[]>([]);
@@ -28,7 +37,7 @@ export default function App() {
   const [adminStats, setAdminStats] = useState<any>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
-  // Fetch all data from Server API Database
+  // Fetch all data from Server API Database and sync session
   const refreshServerData = async () => {
     setIsLoading(true);
     try {
@@ -47,6 +56,17 @@ export default function App() {
       }
       if (statsRes.success) {
         setAdminStats(statsRes);
+      }
+
+      // If user is logged in, refresh latest profile from server
+      if (currentUser?.id) {
+        const userRes = await apiGetUserById(currentUser.id);
+        if (userRes && userRes.user) {
+          setCurrentUser(userRes.user);
+          try {
+            localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(userRes.user));
+          } catch {}
+        }
       }
     } catch (err) {
       console.error("Error fetching data from server database:", err);
@@ -70,6 +90,10 @@ export default function App() {
 
   const handleLoginSuccess = (user: UserSession) => {
     setCurrentUser(user);
+    try {
+      localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(user));
+    } catch {}
+
     const roleStr = String(user.role || "").toUpperCase();
     if (roleStr === "ADMIN" || user.role === UserRole.ADMIN) {
       setActiveTab("admin");
@@ -79,8 +103,18 @@ export default function App() {
     refreshServerData();
   };
 
+  const handleUpdateUserSession = (updatedUser: UserSession) => {
+    setCurrentUser(updatedUser);
+    try {
+      localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(updatedUser));
+    } catch {}
+  };
+
   const handleLogout = () => {
     setCurrentUser(null);
+    try {
+      localStorage.removeItem(SESSION_STORAGE_KEY);
+    } catch {}
     setActiveTab("depan");
   };
 

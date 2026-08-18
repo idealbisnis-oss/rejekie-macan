@@ -10,6 +10,8 @@ import {
 import { UserSession, DepositRequest, PaymentMethod } from "../types";
 import { apiTopUpDeposit, apiExtendProject, apiSubmitDeposit, apiGetDeposits, apiSendInterestChatMessage, apiUpdateUserKYC, apiUpdateInterest } from "../services/api";
 
+import { PROJECT_CATEGORIES } from "../data/categories";
+
 interface DashboardMemberProps {
   currentUser: UserSession;
   supplyListings: any[];
@@ -166,13 +168,7 @@ export default function DashboardMember({
     }
   };
 
-  const categories = [
-    "Properti & Tanah",
-    "Komoditas & Hasil Bumi",
-    "Besi & Logam Scrap",
-    "Alat Berat & Otomotif",
-    "Lainnya"
-  ];
+  const categories = PROJECT_CATEGORIES;
 
   // My listings filtered
   const mySupply = supplyListings.filter((s) => s.brokerId === currentUser.id);

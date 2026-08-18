@@ -17,6 +17,8 @@ interface HalamanDepanProps {
   systemStats: any;
 }
 
+import { HOMEPAGE_FILTER_CATEGORIES } from "../data/categories";
+
 export default function HalamanDepan({
   supplyListings,
   demandListings,
@@ -40,14 +42,7 @@ export default function HalamanDepan({
   const [interestMessage, setInterestMessage] = useState<string>("");
   const [isSubmittingInterest, setIsSubmittingInterest] = useState<boolean>(false);
 
-  const categories = [
-    "ALL",
-    "Properti & Tanah",
-    "Komoditas & Hasil Bumi",
-    "Besi & Logam Scrap",
-    "Alat Berat & Otomotif",
-    "Lainnya"
-  ];
+  const categories = HOMEPAGE_FILTER_CATEGORIES;
 
   // Filter projects
   const filterList = (items: any[], type: "supply" | "demand") => {

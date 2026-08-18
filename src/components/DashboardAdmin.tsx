@@ -12,6 +12,7 @@ import {
   apiAdminResetWebsite, apiAdminUpdateCredentials, apiAdminCreateAccount,
   apiCreateProject
 } from "../services/api";
+import { PROJECT_CATEGORIES } from "../data/categories";
 
 interface DashboardAdminProps {
   supplyListings: any[];
@@ -2378,16 +2379,9 @@ export default function DashboardAdmin({ supplyListings, demandListings, onRefre
                     onChange={(e) => setAdminCategory(e.target.value)}
                     className="w-full p-2.5 bg-slate-50 border border-slate-300 focus:border-amber-500 focus:bg-white rounded-xl font-bold text-slate-900"
                   >
-                    <option value="Lahan / Tanah Komersial">Lahan / Tanah Komersial</option>
-                    <option value="Tanah Kavling Perumahan">Tanah Kavling Perumahan</option>
-                    <option value="Lahan Industri & Pergudangan">Lahan Industri & Pergudangan</option>
-                    <option value="Hotel / Resort & Wisata">Hotel / Resort & Wisata</option>
-                    <option value="SPBU & Retail Gas">SPBU & Retail Gas</option>
-                    <option value="Pertambangan & Kuari">Pertambangan & Kuari</option>
-                    <option value="Perkebunan Sawit / Pertanian">Perkebunan Sawit / Pertanian</option>
-                    <option value="Gedung Kantor & Ruko Komersial">Gedung Kantor & Ruko Komersial</option>
-                    <option value="Rumah Mewah / Villa">Rumah Mewah / Villa</option>
-                    <option value="Pabrik Siap Operasi">Pabrik Siap Operasi</option>
+                    {PROJECT_CATEGORIES.map((cat) => (
+                      <option key={cat} value={cat}>{cat}</option>
+                    ))}
                   </select>
                 </div>
 
