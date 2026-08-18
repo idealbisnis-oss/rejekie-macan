@@ -1,10 +1,19 @@
 import { UserSession, SupplyListing, DemandListing, ListingInterest } from "../types";
 import { INITIAL_SEED_DATA } from "../data/initialData";
+import { 
+  fetchSupabaseDB, 
+  saveSupabaseDB, 
+  isSupabaseConfigured, 
+  getSupabaseConfig, 
+  saveSupabaseConfig 
+} from "./supabase";
+
+export { isSupabaseConfigured, getSupabaseConfig, saveSupabaseConfig };
 
 const STORAGE_KEY_DB = "rejekimacan_local_db_v2_clean";
 
 // Helper to get local persistent state
-function getLocalDB() {
+export function getLocalDB() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY_DB);
     if (raw) {
@@ -19,10 +28,40 @@ function getLocalDB() {
   return init;
 }
 
-function saveLocalDB(data: any) {
+export function saveLocalDB(data: any) {
   try {
     localStorage.setItem(STORAGE_KEY_DB, JSON.stringify(data));
   } catch (e) {}
+  // Also push to Supabase Cloud if configured
+  if (isSupabaseConfigured()) {
+    saveSupabaseDB(data).catch(() => {});
+  }
+}
+
+// Direct trigger to pull from Supabase Cloud
+export async function syncFromSupabaseCloud(): Promise<{ success: boolean; data?: any; message: string }> {
+  if (!isSupabaseConfigured()) {
+    return { success: false, message: "Supabase Anon Key belum diisi. Silakan masukkan di pengaturan database." };
+  }
+  try {
+    const remoteData = await fetchSupabaseDB();
+    if (remoteData && Array.isArray(remoteData.users)) {
+      try {
+        localStorage.setItem(STORAGE_KEY_DB, JSON.stringify(remoteData));
+      } catch (e) {}
+      return { success: true, data: remoteData, message: "Sinkronisasi Supabase Cloud berhasil!" };
+    } else {
+      // If table is empty or first time, push local data to Supabase
+      const local = getLocalDB();
+      const saved = await saveSupabaseDB(local);
+      if (saved) {
+        return { success: true, data: local, message: "Koneksi Supabase aktif! Data lokal berhasil di-upload ke Supabase Cloud." };
+      }
+      return { success: false, message: "Tabel 'app_state' di Supabase belum ada atau izin RLS belum diaktifkan." };
+    }
+  } catch (err: any) {
+    return { success: false, message: err?.message || "Gagal menghubungi Supabase Cloud." };
+  }
 }
 
 async function safeFetchJson(url: string, options?: RequestInit) {
@@ -223,6 +262,36 @@ export async function apiGetProjects(params?: { type?: string; category?: string
   const remote = await safeFetchJson(`/api/projects?${query.toString()}`);
   if (remote && (Array.isArray(remote.supplyListings) || Array.isArray(remote.demandListings))) {
     return remote;
+  }
+
+  // If remote API is unavailable (e.g. static host), check direct Supabase Cloud if configured
+  if (isSupabaseConfigured()) {
+    try {
+      const supaData = await fetchSupabaseDB();
+      if (supaData && (Array.isArray(supaData.supplyListings) || Array.isArray(supaData.demandListings))) {
+        saveLocalDB(supaData);
+        let supply = supaData.supplyListings || [];
+        let demand = supaData.demandListings || [];
+        if (params?.category && params.category !== "Semua Kategori") {
+          supply = supply.filter((s: any) => s.category === params.category);
+          demand = demand.filter((d: any) => d.category === params.category);
+        }
+        if (params?.search) {
+          const q = params.search.toLowerCase();
+          supply = supply.filter((s: any) => (s.title + s.location + s.specifications).toLowerCase().includes(q));
+          demand = demand.filter((d: any) => (d.title + d.location + d.criteria).toLowerCase().includes(q));
+        }
+        if (params?.brokerId) {
+          supply = supply.filter((s: any) => s.brokerId === params.brokerId);
+          demand = demand.filter((d: any) => d.brokerId === params.brokerId);
+        }
+        return {
+          success: true,
+          supplyListings: supply,
+          demandListings: demand
+        };
+      }
+    } catch (e) {}
   }
 
   const db = getLocalDB();

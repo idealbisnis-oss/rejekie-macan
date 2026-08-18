@@ -10,7 +10,8 @@ import {
   apiDeleteProject, apiGetInterests, apiUpdateInterest, apiModerateProject,
   apiGetDeposits, apiApproveDeposit, apiRejectDeposit, apiSendInterestChatMessage,
   apiAdminResetWebsite, apiAdminUpdateCredentials, apiAdminCreateAccount,
-  apiCreateProject
+  apiCreateProject, isSupabaseConfigured, getSupabaseConfig, saveSupabaseConfig,
+  syncFromSupabaseCloud, getLocalDB, saveLocalDB
 } from "../services/api";
 import { PROJECT_CATEGORIES } from "../data/categories";
 import { RupiahInput } from "./RupiahInput";
@@ -58,6 +59,12 @@ export default function DashboardAdmin({ supplyListings, demandListings, onRefre
   const [resetModalType, setResetModalType] = useState<"FULL_FACTORY_RESET" | "TRANSACTIONS_ONLY" | "LISTINGS_ONLY" | null>(null);
   const [resetConfirmText, setResetConfirmText] = useState<string>("");
   const [isExecutingReset, setIsExecutingReset] = useState<boolean>(false);
+
+  // State Supabase Cloud Configuration & Sync
+  const [supaConfig, setSupaConfig] = useState<{ supabaseUrl: string; supabaseAnonKey: string }>(() => getSupabaseConfig());
+  const [isTestingSupa, setIsTestingSupa] = useState<boolean>(false);
+  const [supaStatusMessage, setSupaStatusMessage] = useState<string | null>(null);
+  const [copiedSQL, setCopiedSQL] = useState<boolean>(false);
 
   // State Admin Pos Project (Supply & Demand)
   const [showAdminPostModal, setShowAdminPostModal] = useState<boolean>(false);
@@ -272,6 +279,73 @@ export default function DashboardAdmin({ supplyListings, demandListings, onRefre
     } finally {
       setIsExecutingReset(false);
     }
+  };
+
+  // Handler Simpan & Uji Supabase Cloud
+  const handleSaveSupabaseConfig = () => {
+    saveSupabaseConfig(supaConfig);
+    showToast("✓ Konfigurasi Supabase berhasil disimpan!");
+  };
+
+  const handleTestAndSyncSupabase = async () => {
+    if (!supaConfig.supabaseAnonKey || supaConfig.supabaseAnonKey.trim() === "") {
+      showToast("Harap masukkan Supabase Anon Public Key terlebih dahulu!", "error");
+      return;
+    }
+    setIsTestingSupa(true);
+    setSupaStatusMessage(null);
+    try {
+      saveSupabaseConfig(supaConfig);
+      const res = await syncFromSupabaseCloud();
+      if (res.success) {
+        setSupaStatusMessage("🟢 " + res.message);
+        showToast("✓ Berhasil terhubung & sinkron dengan Supabase Cloud!");
+        loadData();
+        onRefreshData();
+      } else {
+        setSupaStatusMessage("🔴 " + res.message);
+        showToast(res.message, "error");
+      }
+    } catch (err: any) {
+      setSupaStatusMessage("🔴 Gagal: " + (err?.message || "Kesalahan jaringan"));
+      showToast("Gagal menghubungi Supabase", "error");
+    } finally {
+      setIsTestingSupa(false);
+    }
+  };
+
+  const handleExportDatabaseJSON = () => {
+    const db = getLocalDB();
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(db, null, 2));
+    const downloadAnchor = document.createElement("a");
+    downloadAnchor.setAttribute("href", dataStr);
+    downloadAnchor.setAttribute("download", `rejekimacan_database_backup_${new Date().toISOString().slice(0,10)}.json`);
+    document.body.appendChild(downloadAnchor);
+    downloadAnchor.click();
+    downloadAnchor.remove();
+    showToast("✓ File cadangan database JSON berhasil diunduh!");
+  };
+
+  const handleImportDatabaseJSON = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      try {
+        const parsed = JSON.parse(event.target?.result as string);
+        if (parsed && Array.isArray(parsed.users)) {
+          saveLocalDB(parsed);
+          showToast("✓ Database berhasil dipulihkan dari file JSON!");
+          loadData();
+          onRefreshData();
+        } else {
+          showToast("Format file JSON database tidak valid.", "error");
+        }
+      } catch (err) {
+        showToast("Gagal membaca file JSON.", "error");
+      }
+    };
+    reader.readAsText(file);
   };
 
   // Load Admin Data from Server API
@@ -1311,31 +1385,187 @@ export default function DashboardAdmin({ supplyListings, demandListings, onRefre
         </div>
       )}
 
-      {/* TAB CONTENT 4: DATABASE MONITOR */}
+      {/* TAB CONTENT 4: DATABASE MONITOR & SUPABASE CLOUD SYNC */}
       {activeTab === "DATABASE" && (
-        <div className="bg-slate-900 text-slate-100 rounded-2xl p-6 border border-slate-800 space-y-4 font-mono text-xs shadow-xl">
-          <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-            <h3 className="text-sm font-bold text-amber-400 flex items-center gap-2">
-              <Database size={16} />
-              <span>Status Server Database JSON Disk Storage</span>
-            </h3>
-            <span className="px-2 py-0.5 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded text-[10px]">
-              ONLINE & TERFOKUS
-            </span>
+        <div className="space-y-6 animate-in fade-in duration-200">
+          
+          {/* SECTION 1: SUPABASE CLOUD SYNC CONFIGURATION */}
+          <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center font-bold">
+                  <Database size={20} />
+                </div>
+                <div>
+                  <h3 className="font-black text-slate-900 text-lg flex items-center gap-2">
+                    <span>Koneksi Supabase Cloud Database</span>
+                    <span className={`text-[11px] px-2.5 py-0.5 rounded-full font-bold border ${isSupabaseConfigured() ? "bg-emerald-100 text-emerald-800 border-emerald-300" : "bg-amber-100 text-amber-800 border-amber-300"}`}>
+                      {isSupabaseConfigured() ? "🟢 Supabase Key Terpasang" : "🟡 Menunggu Anon Key"}
+                    </span>
+                  </h3>
+                  <p className="text-xs text-slate-500">Hubungkan database Supabase Cloud agar seluruh postingan dari HP, Laptop, dan tim penguji otomatis sinkron 100% secara real-time.</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-700 block">Supabase Project URL:</label>
+                <input
+                  type="text"
+                  value={supaConfig.supabaseUrl}
+                  onChange={(e) => setSupaConfig(prev => ({ ...prev, supabaseUrl: e.target.value }))}
+                  placeholder="https://sucuzvnbqotbbmlnlfwh.supabase.co"
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-mono text-slate-900 focus:outline-none focus:border-emerald-500"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-700 block flex items-center justify-between">
+                  <span>Supabase Anon Public API Key:</span>
+                  <span className="text-[10px] text-slate-400">Dapatkan di Supabase: Project Settings ➔ API ➔ anon public key</span>
+                </label>
+                <input
+                  type="password"
+                  value={supaConfig.supabaseAnonKey}
+                  onChange={(e) => setSupaConfig(prev => ({ ...prev, supabaseAnonKey: e.target.value }))}
+                  placeholder="Masukkan eyJhbGciOi..."
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-mono text-slate-900 focus:outline-none focus:border-emerald-500"
+                />
+              </div>
+
+              {supaStatusMessage && (
+                <div className="p-3 bg-slate-900 text-slate-100 rounded-xl font-mono text-xs border border-slate-800">
+                  {supaStatusMessage}
+                </div>
+              )}
+
+              <div className="flex flex-wrap items-center gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={handleTestAndSyncSupabase}
+                  disabled={isTestingSupa}
+                  className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs rounded-xl shadow cursor-pointer transition-all flex items-center gap-2"
+                >
+                  <RefreshCw size={14} className={isTestingSupa ? "animate-spin" : ""} />
+                  <span>{isTestingSupa ? "Menguji & Menyinkronkan..." : "⚡ Simpan & Sinkronkan Supabase Sekarang"}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleSaveSupabaseConfig}
+                  className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl cursor-pointer transition-all"
+                >
+                  Simpan Konfigurasi Saja
+                </button>
+              </div>
+
+              {/* Panduan SQL jika tabel belum dibuat */}
+              <div className="mt-4 p-4 bg-amber-50/70 border border-amber-200/80 rounded-2xl space-y-2 text-xs">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-amber-900 flex items-center gap-1.5">
+                    <Sparkles size={14} className="text-amber-600" />
+                    <span>Perintah SQL Supabase (Jalankan 1x di SQL Editor Supabase):</span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const sql = `create table if not exists app_state (\n  key text primary key,\n  data jsonb not null,\n  updated_at timestamp with time zone default now()\n);\nalter table app_state enable row level security;\ncreate policy "Allow all access" on app_state for all using (true) with check (true);`;
+                      navigator.clipboard.writeText(sql);
+                      setCopiedSQL(true);
+                      setTimeout(() => setCopiedSQL(false), 3000);
+                    }}
+                    className="px-2.5 py-1 bg-amber-200 hover:bg-amber-300 text-amber-900 font-bold rounded-lg text-[10px] cursor-pointer transition-all"
+                  >
+                    {copiedSQL ? "✓ Tersalin!" : "📋 Salin SQL"}
+                  </button>
+                </div>
+                <pre className="bg-slate-900 text-slate-200 p-3 rounded-xl font-mono text-[11px] overflow-x-auto">
+{`create table if not exists app_state (
+  key text primary key,
+  data jsonb not null,
+  updated_at timestamp with time zone default now()
+);
+alter table app_state enable row level security;
+create policy "Allow all access" on app_state for all using (true) with check (true);`}
+                </pre>
+              </div>
+            </div>
           </div>
 
-          <div className="bg-slate-950 p-4 rounded-xl border border-slate-800/80 space-y-2 text-slate-300">
-            <p><strong>Database Path:</strong> <span className="text-emerald-400">/data/database.json</span></p>
-            <p><strong>Total User Records:</strong> {users.length}</p>
-            <p><strong>Total Supply Records:</strong> {supplyListings.length}</p>
-            <p><strong>Total Demand Records:</strong> {demandListings.length}</p>
-            <p><strong>Total Interest Records:</strong> {interests.length}</p>
-            <p><strong>Last Sync Timestamp:</strong> {new Date().toLocaleString("id-ID")}</p>
+          {/* SECTION 2: CADANGAN & PEMULIHAN DATABASE JSON */}
+          <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm space-y-4">
+            <div className="border-b border-slate-100 pb-3 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-indigo-500/10 text-indigo-600 flex items-center justify-center font-bold">
+                  <Upload size={20} />
+                </div>
+                <div>
+                  <h4 className="font-black text-slate-900 text-base">Cadangan & Pemulihan Database JSON</h4>
+                  <p className="text-xs text-slate-500">Unduh data cadangan utuh atau pulihkan database dari file JSON di HP/Laptop kapan saja.</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3 pt-2">
+              <button
+                type="button"
+                onClick={handleExportDatabaseJSON}
+                className="px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-black text-xs rounded-xl shadow cursor-pointer transition-all flex items-center gap-2"
+              >
+                <FileText size={14} />
+                <span>📥 Unduh Backup Database (.json)</span>
+              </button>
+
+              <label className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 font-black text-xs rounded-xl cursor-pointer transition-all flex items-center gap-2 border border-slate-300">
+                <Upload size={14} />
+                <span>📤 Impor & Pulihkan Database (.json)</span>
+                <input
+                  type="file"
+                  accept=".json"
+                  onChange={handleImportDatabaseJSON}
+                  className="hidden"
+                />
+              </label>
+            </div>
           </div>
 
-          <p className="text-[11px] text-slate-400 font-sans leading-relaxed">
-            💡 <strong>Keunggulan Single Server Database:</strong> Seluruh pendaftaran member baru, posting proyek, dan pengajuan minat tersimpan di server backend tunggal. Setiap kali aplikasi dibuka di HP atau laptop manapun, data yang ditampilkan selalu sinkron secara real-time!
-          </p>
+          {/* SECTION 3: SERVER STATUS CARD */}
+          <div className="bg-slate-900 text-slate-100 rounded-3xl p-6 border border-slate-800 space-y-4 font-mono text-xs shadow-xl">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <h3 className="text-sm font-bold text-amber-400 flex items-center gap-2">
+                <Database size={16} />
+                <span>Status Server Storage & Database Monitoring</span>
+              </h3>
+              <span className="px-2.5 py-0.5 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded text-[10px] font-bold">
+                ONLINE & AKTIF
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-slate-950 p-4 rounded-2xl border border-slate-800/80 text-slate-300">
+              <div className="p-2">
+                <p className="text-[10px] text-slate-400">Total Akun:</p>
+                <p className="text-base font-bold text-white">{users.length} Akun</p>
+              </div>
+              <div className="p-2">
+                <p className="text-[10px] text-slate-400">Total Listing Supply:</p>
+                <p className="text-base font-bold text-emerald-400">{supplyListings.length} Listing</p>
+              </div>
+              <div className="p-2">
+                <p className="text-[10px] text-slate-400">Total Listing Demand:</p>
+                <p className="text-base font-bold text-amber-400">{demandListings.length} Listing</p>
+              </div>
+              <div className="p-2">
+                <p className="text-[10px] text-slate-400">Total Minat:</p>
+                <p className="text-base font-bold text-indigo-400">{interests.length} Minat</p>
+              </div>
+            </div>
+
+            <p className="text-[11px] text-slate-400 font-sans leading-relaxed">
+              💡 <strong>Sinkronisasi Real-Time:</strong> Saat Supabase Cloud Anon Key telah terpasang, setiap postingan baru dari HP manapun langsung tersimpan ke Supabase Cloud dan tampil di Laptop secara instan tanpa jeda!
+            </p>
+          </div>
+
         </div>
       )}
 
