@@ -38,26 +38,93 @@ export function saveLocalDB(data: any) {
   }
 }
 
-// Direct trigger to pull from Supabase Cloud
+export function mergeDatabases(local: any, remote: any): any {
+  if (!remote) return local || {};
+  if (!local) return remote || {};
+
+  const merged = { ...remote };
+
+  // Merge users by id
+  const userMap = new Map();
+  (remote.users || []).forEach((u: any) => u?.id && userMap.set(u.id, u));
+  (local.users || []).forEach((u: any) => {
+    if (u?.id && !userMap.has(u.id)) {
+      userMap.set(u.id, u);
+    }
+  });
+  merged.users = Array.from(userMap.values());
+
+  // Merge supplyListings by id
+  const supplyMap = new Map();
+  (remote.supplyListings || []).forEach((s: any) => s?.id && supplyMap.set(s.id, s));
+  (local.supplyListings || []).forEach((s: any) => {
+    if (s?.id && !supplyMap.has(s.id)) {
+      supplyMap.set(s.id, s);
+    }
+  });
+  merged.supplyListings = Array.from(supplyMap.values());
+
+  // Merge demandListings by id
+  const demandMap = new Map();
+  (remote.demandListings || []).forEach((d: any) => d?.id && demandMap.set(d.id, d));
+  (local.demandListings || []).forEach((d: any) => {
+    if (d?.id && !demandMap.has(d.id)) {
+      demandMap.set(d.id, d);
+    }
+  });
+  merged.demandListings = Array.from(demandMap.values());
+
+  // Merge interests by id
+  const interestMap = new Map();
+  (remote.interests || []).forEach((i: any) => i?.id && interestMap.set(i.id, i));
+  (local.interests || []).forEach((i: any) => {
+    if (i?.id && !interestMap.has(i.id)) {
+      interestMap.set(i.id, i);
+    }
+  });
+  merged.interests = Array.from(interestMap.values());
+
+  // Merge deposits by id
+  const depositMap = new Map();
+  (remote.deposits || []).forEach((dep: any) => dep?.id && depositMap.set(dep.id, dep));
+  (local.deposits || []).forEach((dep: any) => {
+    if (dep?.id && !depositMap.has(dep.id)) {
+      depositMap.set(dep.id, dep);
+    }
+  });
+  merged.deposits = Array.from(depositMap.values());
+
+  return merged;
+}
+
+// Direct trigger to pull & merge from Supabase Cloud
 export async function syncFromSupabaseCloud(): Promise<{ success: boolean; data?: any; message: string }> {
   if (!isSupabaseConfigured()) {
-    return { success: false, message: "Supabase Anon Key belum diisi. Silakan masukkan di pengaturan database." };
+    return { success: false, message: "Supabase Anon Key belum diisi. Silakan masukkan di tab Database." };
   }
   try {
     const remoteData = await fetchSupabaseDB();
+    const local = getLocalDB();
+
     if (remoteData && Array.isArray(remoteData.users)) {
+      const merged = mergeDatabases(local, remoteData);
       try {
-        localStorage.setItem(STORAGE_KEY_DB, JSON.stringify(remoteData));
+        localStorage.setItem(STORAGE_KEY_DB, JSON.stringify(merged));
       } catch (e) {}
-      return { success: true, data: remoteData, message: "Sinkronisasi Supabase Cloud berhasil!" };
+      // Sync back merged state so both cloud and devices are unified
+      await saveSupabaseDB(merged);
+      return { 
+        success: true, 
+        data: merged, 
+        message: `Sinkronisasi Supabase Cloud sukses! (${merged.supplyListings?.length || 0} Supply, ${merged.demandListings?.length || 0} Demand, ${merged.users?.length || 0} Users)` 
+      };
     } else {
       // If table is empty or first time, push local data to Supabase
-      const local = getLocalDB();
       const saved = await saveSupabaseDB(local);
       if (saved) {
         return { success: true, data: local, message: "Koneksi Supabase aktif! Data lokal berhasil di-upload ke Supabase Cloud." };
       }
-      return { success: false, message: "Tabel 'app_state' di Supabase belum ada atau izin RLS belum diaktifkan." };
+      return { success: false, message: "Gagal menyimpan data ke Supabase. Pastikan tabel 'app_state' sudah dibuat di SQL Editor Supabase." };
     }
   } catch (err: any) {
     return { success: false, message: err?.message || "Gagal menghubungi Supabase Cloud." };
