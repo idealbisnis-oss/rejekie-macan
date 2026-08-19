@@ -131,6 +131,25 @@ export async function syncFromSupabaseCloud(): Promise<{ success: boolean; data?
   }
 }
 
+// Master Reset Database across Cloud and Local
+export async function apiResetDatabase(): Promise<{ success: boolean; message: string }> {
+  const init = JSON.parse(JSON.stringify(INITIAL_SEED_DATA));
+  try {
+    localStorage.setItem(STORAGE_KEY_DB, JSON.stringify(init));
+  } catch (e) {}
+
+  if (isSupabaseConfigured()) {
+    try {
+      await saveSupabaseDB(init);
+    } catch (e) {}
+  }
+
+  return {
+    success: true,
+    message: "Database berhasil di-reset ke kondisi awal (Cloud & Lokal)."
+  };
+}
+
 async function safeFetchJson(url: string, options?: RequestInit) {
   try {
     const res = await fetch(url, options);

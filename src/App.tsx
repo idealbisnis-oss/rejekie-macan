@@ -77,6 +77,13 @@ export default function App() {
 
   useEffect(() => {
     refreshServerData();
+
+    // Auto-poll server data every 6 seconds to keep multiple devices & browsers synced in real-time
+    const interval = setInterval(() => {
+      refreshServerData();
+    }, 6000);
+
+    return () => clearInterval(interval);
   }, []);
 
   // Handlers for Auth
