@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Lock, Mail, Phone, User, Building, ShieldCheck, ArrowRight, UserPlus, LogIn, CheckCircle, CreditCard, Upload, X, FileText, Camera } from "lucide-react";
+import { Lock, Mail, Phone, User, Building, ShieldCheck, ArrowRight, UserPlus, LogIn, CheckCircle, CreditCard, Upload, X, FileText, Camera, ShieldAlert, CheckSquare, Square, FileCheck } from "lucide-react";
 import { UserRole } from "../types";
 
 interface HalamanAuthProps {
@@ -10,6 +10,10 @@ interface HalamanAuthProps {
 
 export default function HalamanAuth({ onLoginSubmit, onRegisterSubmit, onLoginSuccess }: HalamanAuthProps) {
   const [authMode, setAuthMode] = useState<"login" | "register">("login");
+
+  // State Terms & Conditions
+  const [termsAgreed, setTermsAgreed] = useState<boolean>(false);
+  const [termsCheckboxChecked, setTermsCheckboxChecked] = useState<boolean>(false);
 
   // State Login
   const [loginEmailOrPhone, setLoginEmailOrPhone] = useState("");
@@ -198,14 +202,160 @@ export default function HalamanAuth({ onLoginSubmit, onRegisterSubmit, onLoginSu
         </div>
       )}
 
-      {/* REGISTER FORM */}
-      {authMode === "register" && (
+      {/* REGISTER FLOW: STEP 1 (TERMS & CONDITIONS) OR STEP 2 (REGISTER FORM) */}
+      {authMode === "register" && !termsAgreed && (
         <div className="bg-white rounded-3xl p-6 sm:p-8 shadow-xl border border-slate-200 space-y-5">
-          <div className="text-center space-y-1">
-            <h2 className="text-2xl font-black text-slate-900">Pendaftaran Member Baru</h2>
-            <p className="text-xs text-slate-500">
-              Daftarkan identitas broker/mediator Anda untuk mulai bertransaksi di Rejeki Macan.
+          <div className="text-center space-y-1.5">
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-500/15 border border-amber-500/30 text-amber-900 rounded-full text-[11px] font-black uppercase tracking-wider">
+              <FileCheck size={14} className="text-amber-600" />
+              <span>Syarat & Ketentuan Penggunaan</span>
+            </div>
+            <h2 className="text-xl sm:text-2xl font-black text-slate-900">Perjanjian Member & Etika Mediator</h2>
+            <p className="text-xs text-slate-500 max-w-md mx-auto">
+              Harap baca dan setujui pedoman operasional transaksi, verifikasi KYC, dan etika mediasi sebelum mendaftar ke jaringan REJEKI MACAN.
             </p>
+          </div>
+
+          {/* Scrollable Terms Content */}
+          <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 sm:p-5 max-h-72 overflow-y-auto space-y-3.5 text-xs text-slate-700 leading-relaxed">
+            <div className="space-y-1">
+              <h4 className="font-black text-slate-900 text-xs flex items-center gap-1.5">
+                <span className="w-4 h-4 rounded-full bg-amber-500 text-slate-950 font-mono text-[10px] flex items-center justify-center font-black">1</span>
+                <span>Kredensial & Wajib Verifikasi KYC (KTP)</span>
+              </h4>
+              <p className="text-[11.5px] text-slate-600 pl-5.5">
+                Setiap member wajib melampirkan Nomor Induk Kependudukan (NIK 16 digit) dan Foto KTP asli yang valid. Member yang belum diverifikasi KYC oleh Admin Central <strong>tidak dapat mempublikasikan proyek penawaran (Supply) maupun permintaan (Demand)</strong> demi menjaga keamanan transaksi.
+              </p>
+            </div>
+
+            <div className="space-y-1">
+              <h4 className="font-black text-slate-900 text-xs flex items-center gap-1.5">
+                <span className="w-4 h-4 rounded-full bg-amber-500 text-slate-950 font-mono text-[10px] flex items-center justify-center font-black">2</span>
+                <span>Integritas & Keabsahan Listing (A1 Valid)</span>
+              </h4>
+              <p className="text-[11.5px] text-slate-600 pl-5.5">
+                Dilarang keras mempublikasikan proyek fiktif, komoditas bodong, tanah sengketa, atau klaim kepemilikan tanpa hak kuasa resmi. Seluruh informasi spesifikasi, harga, dan lokasi wajib dapat dipertanggungjawabkan secara hukum.
+              </p>
+            </div>
+
+            <div className="space-y-1">
+              <h4 className="font-black text-slate-900 text-xs flex items-center gap-1.5">
+                <span className="w-4 h-4 rounded-full bg-amber-500 text-slate-950 font-mono text-[10px] flex items-center justify-center font-black">3</span>
+                <span>Etika Mediasi Broker & Larangan Bypass</span>
+              </h4>
+              <p className="text-[11.5px] text-slate-600 pl-5.5">
+                Sistem mediasi difasilitasi oleh platform untuk mempertemukan perwakilan Penjual (Supply) dan perwakilan Pembeli (Demand) secara adil. Segala bentuk tindakan bypass, pemotongan komisi sepihak, atau kecurangan relasi akan ditindak tegas.
+              </p>
+            </div>
+
+            <div className="space-y-1">
+              <h4 className="font-black text-slate-900 text-xs flex items-center gap-1.5">
+                <span className="w-4 h-4 rounded-full bg-amber-500 text-slate-950 font-mono text-[10px] flex items-center justify-center font-black">4</span>
+                <span>Kerahasiaan Kontak & Mediasi Terbimbing</span>
+              </h4>
+              <p className="text-[11.5px] text-slate-600 pl-5.5">
+                Nomor kontak pemilik aset dilindungi dengan sistem kunci kontak (contact locking). Pembukaan kontak resmi hanya diproses melalui Ruang Chat Mediasi yang diawasi oleh Admin platform setelah kedua pihak terverifikasi siap transaksi.
+              </p>
+            </div>
+
+            <div className="space-y-1">
+              <h4 className="font-black text-slate-900 text-xs flex items-center gap-1.5">
+                <span className="w-4 h-4 rounded-full bg-amber-500 text-slate-950 font-mono text-[10px] flex items-center justify-center font-black">5</span>
+                <span>Masa Aktif Iklan & Biaya Perpanjangan</span>
+              </h4>
+              <p className="text-[11.5px] text-slate-600 pl-5.5">
+                Setiap proyek yang disetujui Admin mendapatkan durasi tayang <strong>Gratis 10 Hari Pertama</strong>. Setelah 10 hari, perpanjangan masa aktif iklan dikenakan tarif terjangkau <strong>Rp 500 / hari</strong> menggunakan saldo deposit akun.
+              </p>
+            </div>
+
+            <div className="space-y-1">
+              <h4 className="font-black text-slate-900 text-xs flex items-center gap-1.5">
+                <span className="w-4 h-4 rounded-full bg-red-500 text-white font-mono text-[10px] flex items-center justify-center font-black">6</span>
+                <span>Sanksi & Pemblokiran Akun</span>
+              </h4>
+              <p className="text-[11.5px] text-slate-600 pl-5.5">
+                Penyalahgunaan platform, pemalsuan identitas KTP, penipuan, atau perusakan reputasi transaksi akan berakibat pada pemblokiran akun permanen dan blacklist NIK seumur hidup.
+              </p>
+            </div>
+          </div>
+
+          {/* Interactive Checkbox */}
+          <div 
+            onClick={() => setTermsCheckboxChecked(!termsCheckboxChecked)}
+            className={`p-3.5 rounded-2xl border transition-all cursor-pointer flex items-start gap-3 select-none ${
+              termsCheckboxChecked 
+                ? "bg-amber-500/10 border-amber-500 ring-2 ring-amber-500/20" 
+                : "bg-slate-50 border-slate-300 hover:border-slate-400"
+            }`}
+          >
+            <div className="shrink-0 mt-0.5 text-amber-600">
+              {termsCheckboxChecked ? (
+                <CheckSquare size={18} className="text-amber-600 fill-amber-500 text-white" />
+              ) : (
+                <Square size={18} className="text-slate-400" />
+              )}
+            </div>
+            <div className="space-y-0.5">
+              <p className="text-xs font-bold text-slate-900 leading-snug">
+                Saya telah membaca, memahami, dan menyetujui seluruh Syarat & Ketentuan di atas.
+              </p>
+              <p className="text-[11px] text-slate-500">
+                Saya bersedia melengkapi data identitas asli & mematuhi kode etik mediator REJEKI MACAN.
+              </p>
+            </div>
+          </div>
+
+          {/* Buttons */}
+          <div className="flex flex-col sm:flex-row items-center gap-2 pt-1">
+            <button
+              type="button"
+              onClick={() => {
+                setAuthMode("login");
+                setTermsCheckboxChecked(false);
+              }}
+              className="w-full sm:w-auto px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-all cursor-pointer"
+            >
+              ← Batal / Kembali ke Login
+            </button>
+
+            <button
+              type="button"
+              disabled={!termsCheckboxChecked}
+              onClick={() => {
+                if (termsCheckboxChecked) {
+                  setTermsAgreed(true);
+                }
+              }}
+              className={`w-full sm:flex-1 py-3 px-4 font-black rounded-xl text-xs uppercase tracking-wider transition-all shadow-md flex items-center justify-center gap-2 ${
+                termsCheckboxChecked
+                  ? "bg-amber-500 hover:bg-amber-400 text-slate-950 cursor-pointer"
+                  : "bg-slate-200 text-slate-400 cursor-not-allowed"
+              }`}
+            >
+              <span>Saya Menyetujui & Lanjut Daftar</span>
+              <ArrowRight size={16} />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* REGISTER FORM */}
+      {authMode === "register" && termsAgreed && (
+        <div className="bg-white rounded-3xl p-6 sm:p-8 shadow-xl border border-slate-200 space-y-5">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+            <div>
+              <h2 className="text-xl sm:text-2xl font-black text-slate-900">Formulir Pendaftaran Member</h2>
+              <p className="text-xs text-slate-500">Lengkapi data identitas & KTP asli untuk pendaftaran broker baru.</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setTermsAgreed(false)}
+              className="text-[11px] font-bold text-amber-700 hover:underline flex items-center gap-1 cursor-pointer shrink-0"
+              title="Lihat Syarat & Ketentuan"
+            >
+              <FileCheck size={13} />
+              <span>Syarat & Ketentuan (✓ Disetujui)</span>
+            </button>
           </div>
 
           {registerError && (

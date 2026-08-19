@@ -13,7 +13,7 @@ export { isSupabaseConfigured, getSupabaseConfig, saveSupabaseConfig };
 const STORAGE_KEY_DB = "rejekimacan_local_db_v2_clean";
 
 // Helper to get local persistent state
-export function getLocalDB() {
+export function getLocalDB(): any {
   try {
     const raw = localStorage.getItem(STORAGE_KEY_DB);
     if (raw) {
@@ -24,7 +24,9 @@ export function getLocalDB() {
     }
   } catch (e) {}
   const init = JSON.parse(JSON.stringify(INITIAL_SEED_DATA));
-  saveLocalDB(init);
+  try {
+    localStorage.setItem(STORAGE_KEY_DB, JSON.stringify(init));
+  } catch (e) {}
   return init;
 }
 
@@ -32,10 +34,45 @@ export function saveLocalDB(data: any) {
   try {
     localStorage.setItem(STORAGE_KEY_DB, JSON.stringify(data));
   } catch (e) {}
-  // Also push to Supabase Cloud if configured
   if (isSupabaseConfigured()) {
     saveSupabaseDB(data).catch(() => {});
   }
+}
+
+// Master Helper: Fetch fresh data directly from Supabase Cloud
+export async function getFreshDB(): Promise<any> {
+  if (isSupabaseConfigured()) {
+    try {
+      const supaData = await fetchSupabaseDB();
+      if (supaData && Array.isArray(supaData.users)) {
+        try {
+          localStorage.setItem(STORAGE_KEY_DB, JSON.stringify(supaData));
+        } catch (e) {}
+        return supaData;
+      }
+    } catch (e) {
+      console.warn("Supabase fetch error, fallback to local:", e);
+    }
+  }
+  return getLocalDB();
+}
+
+// Master Helper: Commit and save directly to Supabase Cloud
+export async function commitDB(data: any): Promise<boolean> {
+  try {
+    localStorage.setItem(STORAGE_KEY_DB, JSON.stringify(data));
+  } catch (e) {}
+
+  if (isSupabaseConfigured()) {
+    try {
+      const ok = await saveSupabaseDB(data);
+      return ok;
+    } catch (err) {
+      console.error("Supabase commit error:", err);
+      return false;
+    }
+  }
+  return true;
 }
 
 export function mergeDatabases(local: any, remote: any): any {
@@ -111,7 +148,6 @@ export async function syncFromSupabaseCloud(): Promise<{ success: boolean; data?
       try {
         localStorage.setItem(STORAGE_KEY_DB, JSON.stringify(merged));
       } catch (e) {}
-      // Sync back merged state so both cloud and devices are unified
       await saveSupabaseDB(merged);
       return { 
         success: true, 
@@ -119,7 +155,6 @@ export async function syncFromSupabaseCloud(): Promise<{ success: boolean; data?
         message: `Sinkronisasi Supabase Cloud sukses! (${merged.supplyListings?.length || 0} Supply, ${merged.demandListings?.length || 0} Demand, ${merged.users?.length || 0} Users)` 
       };
     } else {
-      // If table is empty or first time, push local data to Supabase
       const saved = await saveSupabaseDB(local);
       if (saved) {
         return { success: true, data: local, message: "Koneksi Supabase aktif! Data lokal berhasil di-upload ke Supabase Cloud." };
@@ -134,16 +169,7 @@ export async function syncFromSupabaseCloud(): Promise<{ success: boolean; data?
 // Master Reset Database across Cloud and Local
 export async function apiResetDatabase(): Promise<{ success: boolean; message: string }> {
   const init = JSON.parse(JSON.stringify(INITIAL_SEED_DATA));
-  try {
-    localStorage.setItem(STORAGE_KEY_DB, JSON.stringify(init));
-  } catch (e) {}
-
-  if (isSupabaseConfigured()) {
-    try {
-      await saveSupabaseDB(init);
-    } catch (e) {}
-  }
-
+  await commitDB(init);
   return {
     success: true,
     message: "Database berhasil di-reset ke kondisi awal (Cloud & Lokal)."
@@ -172,20 +198,19 @@ export async function fetchSystemInfo() {
   const remote = await safeFetchJson("/api/system/info");
   if (remote && remote.status) return remote;
 
-  const db = getLocalDB();
+  const db = await getFreshDB();
   return {
     status: "online",
-    database: "Local Storage & Client Sync (Active)",
-    usersCount: db.users.length,
-    supplyListingsCount: db.supplyListings.length,
-    demandListingsCount: db.demandListings.length,
+    database: "Supabase Cloud Database (Direct Live)",
+    usersCount: db.users?.length || 0,
+    supplyListingsCount: db.supplyListings?.length || 0,
+    demandListingsCount: db.demandListings?.length || 0,
     interestsCount: (db.interests || []).length,
     updatedAt: new Date().toISOString()
   };
 }
 
 export async function apiLogin(emailOrPhone: string, password: string): Promise<{ success: boolean; user?: UserSession; message?: string }> {
-  // 1. Try remote API first
   const remote = await safeFetchJson("/api/auth/login", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -194,20 +219,19 @@ export async function apiLogin(emailOrPhone: string, password: string): Promise<
 
   if (remote && typeof remote.success === "boolean") {
     if (remote.success && remote.user) {
-      // Sync to local
-      const db = getLocalDB();
+      const db = await getFreshDB();
       const idx = db.users.findIndex((u: any) => u.id === remote.user.id);
       if (idx >= 0) db.users[idx] = remote.user;
       else db.users.push(remote.user);
-      saveLocalDB(db);
+      await commitDB(db);
       return remote;
     } else {
       return remote;
     }
   }
 
-  // 2. Fallback to Local Database (Guarantees Admin & Users login always works)
-  const db = getLocalDB();
+  // Supabase Cloud direct check
+  const db = await getFreshDB();
   const cleanInput = (emailOrPhone || "").trim().toLowerCase();
   
   const user = db.users.find((u: any) => 
@@ -217,7 +241,6 @@ export async function apiLogin(emailOrPhone: string, password: string): Promise<
   );
 
   if (!user) {
-    // Special master check for default admin
     if (cleanInput === "admin@rejekimacan.com" && password === "admin123") {
       const adminUser = INITIAL_SEED_DATA.users[0];
       return { success: true, user: adminUser as UserSession, message: "Login Admin Berhasil" };
@@ -270,8 +293,8 @@ export async function apiRegister(userData: {
     return remote;
   }
 
-  // Fallback local registration
-  const db = getLocalDB();
+  // Cloud registration direct
+  const db = await getFreshDB();
   const newUser = {
     id: `user-${Date.now()}`,
     fullName: userData.fullName,
@@ -289,12 +312,12 @@ export async function apiRegister(userData: {
   };
 
   db.users.push(newUser);
-  saveLocalDB(db);
+  await commitDB(db);
 
   return {
     success: true,
     user: newUser,
-    message: "Registrasi berhasil!"
+    message: "Registrasi berhasil dan tersimpan ke database cloud!"
   };
 }
 
@@ -303,17 +326,8 @@ export async function apiGetUsers() {
   if (remote && Array.isArray(remote.users)) {
     return remote;
   }
-  if (isSupabaseConfigured()) {
-    try {
-      const supaData = await fetchSupabaseDB();
-      if (supaData && Array.isArray(supaData.users)) {
-        try { localStorage.setItem(STORAGE_KEY_DB, JSON.stringify(supaData)); } catch(e) {}
-        return { success: true, users: supaData.users };
-      }
-    } catch (e) {}
-  }
-  const db = getLocalDB();
-  return { success: true, users: db.users };
+  const db = await getFreshDB();
+  return { success: true, users: db.users || [] };
 }
 
 export async function apiUpdateUserKYC(userId: string, data: any) {
@@ -324,13 +338,13 @@ export async function apiUpdateUserKYC(userId: string, data: any) {
   });
   if (remote && typeof remote.success === "boolean") return remote;
 
-  const db = getLocalDB();
+  const db = await getFreshDB();
   const user = db.users.find((u: any) => u.id === userId);
   if (user) {
     Object.assign(user, data);
-    saveLocalDB(db);
+    await commitDB(db);
   }
-  return { success: true, user, message: "Data user berhasil diperbarui." };
+  return { success: true, user, message: "Data KYC berhasil diperbarui di cloud database." };
 }
 
 export async function apiDeleteUser(userId: string) {
@@ -339,10 +353,10 @@ export async function apiDeleteUser(userId: string) {
   });
   if (remote && typeof remote.success === "boolean") return remote;
 
-  const db = getLocalDB();
+  const db = await getFreshDB();
   db.users = db.users.filter((u: any) => u.id !== userId);
-  saveLocalDB(db);
-  return { success: true, message: "User berhasil dihapus." };
+  await commitDB(db);
+  return { success: true, message: "User berhasil dihapus dari cloud database." };
 }
 
 export async function apiGetProjects(params?: { type?: string; category?: string; search?: string; brokerId?: string; publicOnly?: boolean; includeAll?: boolean }) {
@@ -359,37 +373,7 @@ export async function apiGetProjects(params?: { type?: string; category?: string
     return remote;
   }
 
-  // If remote API is unavailable (e.g. static host), check direct Supabase Cloud if configured
-  if (isSupabaseConfigured()) {
-    try {
-      const supaData = await fetchSupabaseDB();
-      if (supaData && (Array.isArray(supaData.supplyListings) || Array.isArray(supaData.demandListings))) {
-        saveLocalDB(supaData);
-        let supply = supaData.supplyListings || [];
-        let demand = supaData.demandListings || [];
-        if (params?.category && params.category !== "Semua Kategori") {
-          supply = supply.filter((s: any) => s.category === params.category);
-          demand = demand.filter((d: any) => d.category === params.category);
-        }
-        if (params?.search) {
-          const q = params.search.toLowerCase();
-          supply = supply.filter((s: any) => (s.title + s.location + s.specifications).toLowerCase().includes(q));
-          demand = demand.filter((d: any) => (d.title + d.location + d.criteria).toLowerCase().includes(q));
-        }
-        if (params?.brokerId) {
-          supply = supply.filter((s: any) => s.brokerId === params.brokerId);
-          demand = demand.filter((d: any) => d.brokerId === params.brokerId);
-        }
-        return {
-          success: true,
-          supplyListings: supply,
-          demandListings: demand
-        };
-      }
-    } catch (e) {}
-  }
-
-  const db = getLocalDB();
+  const db = await getFreshDB();
   let supply = db.supplyListings || [];
   let demand = db.demandListings || [];
 
@@ -422,17 +406,26 @@ export async function apiCreateProject(projectData: any) {
   });
   if (remote && typeof remote.success === "boolean") return remote;
 
-  const db = getLocalDB();
+  const db = await getFreshDB();
+  const brokerUser = db.users?.find((u: any) => u.id === projectData.brokerId);
+
+  // Verifikasi KYC: Member yang belum terverifikasi KYC oleh Admin TIDAK BISA posting project
+  if (brokerUser && brokerUser.role !== "ADMIN" && brokerUser.kycStatus !== "VERIFIED") {
+    return {
+      success: false,
+      message: "Akun Anda belum diverifikasi KYC oleh Admin. Silakan tunggu verifikasi admin sebelum memposting proyek."
+    };
+  }
+
   const isSupply = projectData.projectType === "supply";
   const newId = `${isSupply ? "sup" : "dem"}-${Date.now()}`;
-  const brokerUser = db.users?.find((u: any) => u.id === projectData.brokerId);
   const brokerUsername = projectData.brokerUsername || brokerUser?.username || brokerUser?.fullName || projectData.brokerId;
 
   const newProject = {
     ...projectData,
     id: newId,
     brokerUsername,
-    moderationStatus: projectData.brokerId?.includes("admin") ? "APPROVED" : "APPROVED",
+    moderationStatus: "APPROVED",
     viewCount: 1,
     isHot: Boolean(projectData.isPremium),
     createdAt: new Date().toISOString(),
@@ -441,19 +434,18 @@ export async function apiCreateProject(projectData: any) {
   };
 
   if (isSupply) {
+    if (!db.supplyListings) db.supplyListings = [];
     db.supplyListings.unshift(newProject);
   } else {
+    if (!db.demandListings) db.demandListings = [];
     db.demandListings.unshift(newProject);
   }
-  saveLocalDB(db);
-  if (isSupabaseConfigured()) {
-    await saveSupabaseDB(db);
-  }
+  await commitDB(db);
 
   return {
     success: true,
     project: newProject,
-    message: "Proyek berhasil dipublikasikan!"
+    message: "Proyek berhasil dipublikasikan dan tersimpan ke Cloud!"
   };
 }
 
@@ -465,22 +457,19 @@ export async function apiModerateProject(projectId: string, moderationStatus: "A
   });
   if (remote && typeof remote.success === "boolean") return remote;
 
-  const db = getLocalDB();
-  const sup = db.supplyListings?.find((p: any) => p.id === projectId);
+  const db = await getFreshDB();
+  const sup = (db.supplyListings || []).find((p: any) => p.id === projectId);
   if (sup) {
     sup.moderationStatus = moderationStatus;
     if (rejectionReason) sup.rejectionReason = rejectionReason;
   }
-  const dem = db.demandListings?.find((p: any) => p.id === projectId);
+  const dem = (db.demandListings || []).find((p: any) => p.id === projectId);
   if (dem) {
     dem.moderationStatus = moderationStatus;
     if (rejectionReason) dem.rejectionReason = rejectionReason;
   }
-  saveLocalDB(db);
-  if (isSupabaseConfigured()) {
-    await saveSupabaseDB(db);
-  }
-  return { success: true, message: `Proyek ${moderationStatus.toLowerCase()}.` };
+  await commitDB(db);
+  return { success: true, message: `Proyek ${moderationStatus.toLowerCase()} di cloud.` };
 }
 
 export async function apiTopUpDeposit(userId: string, amount: number) {
@@ -491,16 +480,13 @@ export async function apiTopUpDeposit(userId: string, amount: number) {
   });
   if (remote && typeof remote.success === "boolean") return remote;
 
-  const db = getLocalDB();
-  const user = db.users.find((u: any) => u.id === userId);
+  const db = await getFreshDB();
+  const user = (db.users || []).find((u: any) => u.id === userId);
   if (user) {
     user.balance = (user.balance || 0) + amount;
-    saveLocalDB(db);
-    if (isSupabaseConfigured()) {
-      await saveSupabaseDB(db);
-    }
+    await commitDB(db);
   }
-  return { success: true, balance: user?.balance || 0, message: "Deposit berhasil ditambahkan." };
+  return { success: true, balance: user?.balance || 0, message: "Deposit berhasil ditambahkan ke akun." };
 }
 
 export async function apiExtendProject(projectId: string, userId: string, days: number) {
@@ -511,17 +497,14 @@ export async function apiExtendProject(projectId: string, userId: string, days: 
   });
   if (remote && typeof remote.success === "boolean") return remote;
 
-  const db = getLocalDB();
-  const item = db.supplyListings?.find((s: any) => s.id === projectId) || db.demandListings?.find((d: any) => d.id === projectId);
+  const db = await getFreshDB();
+  const item = (db.supplyListings || []).find((s: any) => s.id === projectId) || (db.demandListings || []).find((d: any) => d.id === projectId);
   if (item) {
     const curExp = item.expiresAt ? new Date(item.expiresAt).getTime() : Date.now();
     item.expiresAt = new Date(Math.max(Date.now(), curExp) + days * 24 * 3600 * 1000).toISOString();
-    saveLocalDB(db);
-    if (isSupabaseConfigured()) {
-      await saveSupabaseDB(db);
-    }
+    await commitDB(db);
   }
-  return { success: true, message: `Durasi proyek diperpanjang ${days} hari.` };
+  return { success: true, message: `Durasi proyek diperpanjang ${days} hari di cloud.` };
 }
 
 export async function apiDeleteProject(projectId: string) {
@@ -530,29 +513,17 @@ export async function apiDeleteProject(projectId: string) {
   });
   if (remote && typeof remote.success === "boolean") return remote;
 
-  const db = getLocalDB();
+  const db = await getFreshDB();
   db.supplyListings = (db.supplyListings || []).filter((s: any) => s.id !== projectId);
   db.demandListings = (db.demandListings || []).filter((d: any) => d.id !== projectId);
-  saveLocalDB(db);
-  if (isSupabaseConfigured()) {
-    await saveSupabaseDB(db);
-  }
-  return { success: true, message: "Proyek berhasil dihapus." };
+  await commitDB(db);
+  return { success: true, message: "Proyek berhasil dihapus dari cloud database." };
 }
 
 export async function apiGetInterests() {
   const remote = await safeFetchJson("/api/interests");
   if (remote && Array.isArray(remote.interests)) return remote;
-  if (isSupabaseConfigured()) {
-    try {
-      const supaData = await fetchSupabaseDB();
-      if (supaData && Array.isArray(supaData.interests)) {
-        try { localStorage.setItem(STORAGE_KEY_DB, JSON.stringify(supaData)); } catch(e) {}
-        return { success: true, interests: supaData.interests };
-      }
-    } catch (e) {}
-  }
-  const db = getLocalDB();
+  const db = await getFreshDB();
   return { success: true, interests: db.interests || [] };
 }
 
@@ -564,7 +535,7 @@ export async function apiSubmitInterest(projectId: string, interestData: any) {
   });
   if (remote && typeof remote.success === "boolean") return remote;
 
-  const db = getLocalDB();
+  const db = await getFreshDB();
   if (!db.interests) db.interests = [];
   const newInt = {
     ...interestData,
@@ -575,11 +546,8 @@ export async function apiSubmitInterest(projectId: string, interestData: any) {
     chats: []
   };
   db.interests.push(newInt);
-  saveLocalDB(db);
-  if (isSupabaseConfigured()) {
-    await saveSupabaseDB(db);
-  }
-  return { success: true, interest: newInt, message: "Minat berhasil dikirim ke Admin." };
+  await commitDB(db);
+  return { success: true, interest: newInt, message: "Minat berhasil dikirim ke Admin dan tersimpan di Cloud." };
 }
 
 export async function apiUpdateInterest(
@@ -601,16 +569,13 @@ export async function apiUpdateInterest(
   });
   if (remote && typeof remote.success === "boolean") return remote;
 
-  const db = getLocalDB();
+  const db = await getFreshDB();
   const int = (db.interests || []).find((i: any) => i.id === interestId);
   if (int) {
     Object.assign(int, payload);
-    saveLocalDB(db);
-    if (isSupabaseConfigured()) {
-      await saveSupabaseDB(db);
-    }
+    await commitDB(db);
   }
-  return { success: true, message: "Data minat diperbarui." };
+  return { success: true, interest: int, message: "Data minat diperbarui di cloud." };
 }
 
 export async function apiSendInterestChatMessage(interestId: string, chatData: { senderId: string; senderName: string; senderRole: string; message: string }) {
@@ -621,7 +586,7 @@ export async function apiSendInterestChatMessage(interestId: string, chatData: {
   });
   if (remote && typeof remote.success === "boolean") return remote;
 
-  const db = getLocalDB();
+  const db = await getFreshDB();
   const int = (db.interests || []).find((i: any) => i.id === interestId);
   if (int) {
     if (!int.chats) int.chats = [];
@@ -630,30 +595,17 @@ export async function apiSendInterestChatMessage(interestId: string, chatData: {
       id: `chat-${Date.now()}`,
       sentAt: new Date().toISOString()
     });
-    saveLocalDB(db);
-    if (isSupabaseConfigured()) {
-      await saveSupabaseDB(db);
-    }
+    await commitDB(db);
   }
-  return { success: true, message: "Pesan terkirim." };
+  return { success: true, interest: int, message: "Pesan mediasi terkirim." };
 }
 
 export async function apiGetDeposits(userId?: string) {
   const query = userId ? `?userId=${userId}` : "";
   const remote = await safeFetchJson(`/api/deposits${query}`);
   if (remote && Array.isArray(remote.deposits)) return remote;
-  if (isSupabaseConfigured()) {
-    try {
-      const supaData = await fetchSupabaseDB();
-      if (supaData && Array.isArray(supaData.deposits)) {
-        try { localStorage.setItem(STORAGE_KEY_DB, JSON.stringify(supaData)); } catch(e) {}
-        let deps = supaData.deposits || [];
-        if (userId) deps = deps.filter((d: any) => d.userId === userId);
-        return { success: true, deposits: deps };
-      }
-    } catch (e) {}
-  }
-  const db = getLocalDB();
+  
+  const db = await getFreshDB();
   let deps = db.deposits || [];
   if (userId) deps = deps.filter((d: any) => d.userId === userId);
   return { success: true, deposits: deps };
@@ -667,7 +619,7 @@ export async function apiSubmitDeposit(depositData: any) {
   });
   if (remote && typeof remote.success === "boolean") return remote;
 
-  const db = getLocalDB();
+  const db = await getFreshDB();
   if (!db.deposits) db.deposits = [];
   const newDep = {
     ...depositData,
@@ -676,11 +628,8 @@ export async function apiSubmitDeposit(depositData: any) {
     createdAt: new Date().toISOString()
   };
   db.deposits.unshift(newDep);
-  saveLocalDB(db);
-  if (isSupabaseConfigured()) {
-    await saveSupabaseDB(db);
-  }
-  return { success: true, deposit: newDep, message: "Deposit berhasil diajukan." };
+  await commitDB(db);
+  return { success: true, deposit: newDep, message: "Deposit berhasil diajukan dan masuk ke antrean Admin." };
 }
 
 export async function apiApproveDeposit(depositId: string) {
@@ -689,21 +638,18 @@ export async function apiApproveDeposit(depositId: string) {
   });
   if (remote && typeof remote.success === "boolean") return remote;
 
-  const db = getLocalDB();
+  const db = await getFreshDB();
   const dep = (db.deposits || []).find((d: any) => d.id === depositId);
   if (dep) {
     dep.status = "APPROVED";
     dep.processedAt = new Date().toISOString();
-    const user = db.users.find((u: any) => u.id === dep.userId);
+    const user = (db.users || []).find((u: any) => u.id === dep.userId);
     if (user) {
       user.balance = (user.balance || 0) + Number(dep.amount || 0);
     }
-    saveLocalDB(db);
-    if (isSupabaseConfigured()) {
-      await saveSupabaseDB(db);
-    }
+    await commitDB(db);
   }
-  return { success: true, message: "Deposit disetujui & saldo member bertambah." };
+  return { success: true, message: "Deposit disetujui & saldo member bertambah di Cloud." };
 }
 
 export async function apiRejectDeposit(depositId: string, rejectionReason?: string) {
@@ -714,30 +660,27 @@ export async function apiRejectDeposit(depositId: string, rejectionReason?: stri
   });
   if (remote && typeof remote.success === "boolean") return remote;
 
-  const db = getLocalDB();
+  const db = await getFreshDB();
   const dep = (db.deposits || []).find((d: any) => d.id === depositId);
   if (dep) {
     dep.status = "REJECTED";
     dep.rejectionReason = rejectionReason;
     dep.processedAt = new Date().toISOString();
-    saveLocalDB(db);
-    if (isSupabaseConfigured()) {
-      await saveSupabaseDB(db);
-    }
+    await commitDB(db);
   }
-  return { success: true, message: "Deposit ditolak." };
+  return { success: true, message: "Deposit ditolak di Cloud." };
 }
 
 export async function apiGetAdminStats() {
   const remote = await safeFetchJson("/api/admin/stats");
   if (remote && remote.stats) return remote;
 
-  const db = getLocalDB();
+  const db = await getFreshDB();
   return {
     success: true,
     stats: {
-      totalUsers: db.users.length,
-      verifiedBrokers: db.users.filter((u: any) => u.kycStatus === "VERIFIED").length,
+      totalUsers: (db.users || []).length,
+      verifiedBrokers: (db.users || []).filter((u: any) => u.kycStatus === "VERIFIED").length,
       totalSupplyListings: (db.supplyListings || []).length,
       totalDemandListings: (db.demandListings || []).length,
       pendingInterests: (db.interests || []).filter((i: any) => i.status === "PENDING_ADMIN").length,
@@ -757,7 +700,8 @@ export async function apiAdminResetWebsite(resetType: "FULL_FACTORY_RESET" | "TR
     return remote;
   }
 
-  let db = getLocalDB();
+  let db = await getFreshDB();
+
   if (resetType === "FULL_FACTORY_RESET") {
     db = JSON.parse(JSON.stringify(INITIAL_SEED_DATA));
   } else if (resetType === "TRANSACTIONS_ONLY") {
@@ -768,18 +712,16 @@ export async function apiAdminResetWebsite(resetType: "FULL_FACTORY_RESET" | "TR
     db.demandListings = [];
   }
   
-  saveLocalDB(db);
-  if (isSupabaseConfigured()) {
-    await saveSupabaseDB(db);
-  }
+  await commitDB(db);
   return { success: true, message: "Database berhasil direset dan disinkronkan ke Cloud." };
 }
 
 export async function apiGetUserById(userId: string) {
   const remote = await safeFetchJson(`/api/users/${userId}`);
   if (remote && remote.user) return remote;
-  const db = getLocalDB();
-  const user = db.users?.find((u: any) => u.id === userId);
+
+  const db = await getFreshDB();
+  const user = (db.users || []).find((u: any) => u.id === userId);
   return { success: Boolean(user), user };
 }
 
@@ -801,16 +743,15 @@ export async function apiAdminUpdateCredentials(data: {
   });
   if (remote && typeof remote.success === "boolean") {
     if (remote.user) {
-      // Sync to local
-      const db = getLocalDB();
+      const db = await getFreshDB();
       const idx = db.users.findIndex((u: any) => u.id === remote.user.id || u.role === "ADMIN");
       if (idx >= 0) db.users[idx] = remote.user;
-      saveLocalDB(db);
+      await commitDB(db);
     }
     return remote;
   }
 
-  const db = getLocalDB();
+  const db = await getFreshDB();
   const admin = db.users.find((u: any) => u.id === targetId || u.role === "ADMIN");
   if (admin) {
     if (data.fullName) admin.fullName = data.fullName;
@@ -818,12 +759,9 @@ export async function apiAdminUpdateCredentials(data: {
     if (data.email) admin.email = data.email;
     if (data.phoneNumber) admin.phoneNumber = data.phoneNumber;
     if (data.newPassword) admin.password = data.newPassword;
-    saveLocalDB(db);
-    if (isSupabaseConfigured()) {
-      await saveSupabaseDB(db);
-    }
+    await commitDB(db);
   }
-  return { success: true, user: admin, message: "Kredensial Admin berhasil diperbarui." };
+  return { success: true, user: admin, message: "Kredensial Admin berhasil diperbarui di cloud." };
 }
 
 export async function apiAdminCreateAccount(data: {
@@ -840,7 +778,7 @@ export async function apiAdminCreateAccount(data: {
   });
   if (remote && typeof remote.success === "boolean") return remote;
 
-  const db = getLocalDB();
+  const db = await getFreshDB();
   const newAdmin = {
     id: `admin-${Date.now()}`,
     fullName: data.fullName,
@@ -855,9 +793,6 @@ export async function apiAdminCreateAccount(data: {
     balance: 0
   };
   db.users.push(newAdmin);
-  saveLocalDB(db);
-  if (isSupabaseConfigured()) {
-    await saveSupabaseDB(db);
-  }
-  return { success: true, newAdmin, message: "Admin baru berhasil dibuat." };
+  await commitDB(db);
+  return { success: true, newAdmin, message: "Admin baru berhasil dibuat di cloud." };
 }

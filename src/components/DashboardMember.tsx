@@ -97,9 +97,62 @@ export default function DashboardMember({
   const [editUsername, setEditUsername] = useState<string>(currentUser.username || currentUser.fullName);
   const [isSavingUsername, setIsSavingUsername] = useState<boolean>(false);
 
+  // State Edit KYC / NIK Submission
+  const [kycNik, setKycNik] = useState<string>(currentUser.ktpNumber || "");
+  const [kycImg, setKycImg] = useState<string>(currentUser.ktpImageUrl || "");
+  const [isSubmittingKyc, setIsSubmittingKyc] = useState<boolean>(false);
+
+  const isKycVerified = currentUser.kycStatus === "VERIFIED" || currentUser.role === "ADMIN";
+
   useEffect(() => {
     setEditUsername(currentUser.username || currentUser.fullName);
+    setKycNik(currentUser.ktpNumber || "");
+    setKycImg(currentUser.ktpImageUrl || "");
   }, [currentUser]);
+
+  const handleKycFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 10 * 1024 * 1024) {
+      alert("Ukuran file foto KTP maksimal 10MB");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      setKycImg(event.target?.result as string);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleSaveKYC = async () => {
+    if (!kycNik.trim() || kycNik.replace(/\D/g, "").length < 16) {
+      alert("Nomor NIK / KTP harus minimal 16 digit angka.");
+      return;
+    }
+    if (!kycImg) {
+      alert("Silakan unggah foto KTP asli Anda.");
+      return;
+    }
+    setIsSubmittingKyc(true);
+    try {
+      const res = await apiUpdateUserKYC(currentUser.id, {
+        ktpNumber: kycNik.replace(/\D/g, ""),
+        ktpImageUrl: kycImg,
+        kycStatus: "PENDING"
+      });
+      if (res.success && res.user) {
+        if (onUpdateUserSession) onUpdateUserSession(res.user);
+        alert("✓ Berkas KTP berhasil dikirim ke Admin!\n\nStatus akun Anda sekarang PENDING (Menunggu Persetujuan Admin).");
+        onRefreshData();
+      } else {
+        alert(res.message || "Gagal mengirim berkas KYC.");
+      }
+    } catch (err) {
+      alert("Terjadi kesalahan saat memperbarui data KYC.");
+    } finally {
+      setIsSubmittingKyc(false);
+    }
+  };
 
   const handleSaveUsername = async () => {
     if (!editUsername.trim()) return;
@@ -226,6 +279,11 @@ export default function DashboardMember({
 
   const handlePostProject = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!isKycVerified) {
+      alert("⚠️ Akun Anda belum diverifikasi KYC oleh Admin. Anda belum dapat memposting proyek hingga Admin memverifikasi identitas Anda.");
+      setActiveSubTab("PROFILE");
+      return;
+    }
     if (!title.trim() || !specifications.trim()) {
       alert("Harap lengkapi judul dan deskripsi spesifikasi proyek.");
       return;
@@ -460,8 +518,13 @@ export default function DashboardMember({
             activeSubTab === "CREATE" ? "bg-amber-500 text-slate-950 shadow-sm font-black" : "text-slate-600 hover:text-slate-900"
           }`}
         >
-          <PlusCircle size={14} />
+          {isKycVerified ? <PlusCircle size={14} /> : <Lock size={14} className="text-amber-800" />}
           <span>+ Pasang Proyek Baru</span>
+          {!isKycVerified && (
+            <span className="px-1.5 py-0.5 bg-red-600 text-white text-[9px] font-black rounded-md tracking-tight">
+              Wajib KYC
+            </span>
+          )}
         </button>
 
         <button
@@ -660,14 +723,63 @@ export default function DashboardMember({
       {/* TAB CONTENT: CREATE PROJECT */}
       {activeSubTab === "CREATE" && (
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-6">
-          <div className="border-b border-slate-200 pb-3">
-            <h3 className="text-lg font-black text-slate-900">Pasang & Publikasikan Proyek Baru</h3>
-            <p className="text-xs text-slate-500">
-              Isi formulir di bawah ini. Proyek Anda akan diverifikasi oleh Admin sebelum dipublikasikan di katalog publik (Gratis 10 Hari Pertama).
-            </p>
-          </div>
+          {!isKycVerified ? (
+            <div className="p-6 sm:p-8 bg-amber-50/70 border-2 border-amber-300 rounded-3xl space-y-5 text-center max-w-xl mx-auto">
+              <div className="w-14 h-14 bg-amber-500 text-slate-950 rounded-2xl flex items-center justify-center mx-auto shadow-md">
+                <ShieldAlert size={30} />
+              </div>
 
-          <form onSubmit={handlePostProject} className="space-y-4 max-w-2xl text-xs">
+              <div className="space-y-2">
+                <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-200/80 text-amber-950 font-black text-[11px] rounded-full uppercase tracking-wider">
+                  <Lock size={12} />
+                  <span>Fitur Posting Terkunci</span>
+                </div>
+                <h3 className="text-xl font-black text-slate-900">
+                  Wajib Verifikasi KYC Sebelum Posting Proyek
+                </h3>
+                <p className="text-xs text-slate-600 leading-relaxed">
+                  Untuk menjaga integritas komunitas broker dan mencegah peredaran aset fiktif / bodong, Anda wajib menyelesaikan verifikasi identitas (NIK & Foto KTP) yang telah diverifikasi oleh Admin.
+                </p>
+              </div>
+
+              <div className="p-4 bg-white rounded-2xl border border-amber-200 text-left space-y-2 text-xs">
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-500 font-medium">Status KYC Anda Saat Ini:</span>
+                  <span className={`px-2.5 py-0.5 rounded-md font-black text-[11px] uppercase ${
+                    currentUser.kycStatus === "PENDING"
+                      ? "bg-amber-100 text-amber-900 border border-amber-300"
+                      : "bg-red-100 text-red-900 border border-red-300"
+                  }`}>
+                    {currentUser.kycStatus === "PENDING" ? "⏳ Menunggu Verifikasi Admin" : "⚠️ Belum Terverifikasi"}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between border-t border-slate-100 pt-2">
+                  <span className="text-slate-500 font-medium">NIK KTP Terdaftar:</span>
+                  <span className="font-mono font-bold text-slate-900">{currentUser.ktpNumber || "Belum diisi"}</span>
+                </div>
+              </div>
+
+              <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setActiveSubTab("PROFILE")}
+                  className="w-full sm:w-auto px-6 py-3 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs uppercase tracking-wider rounded-xl transition-all shadow-md cursor-pointer flex items-center justify-center gap-2"
+                >
+                  <User size={16} />
+                  <span>{currentUser.kycStatus === "PENDING" ? "Lihat Status Verifikasi Profil" : "Lengkapi NIK & KTP Sekarang →"}</span>
+                </button>
+              </div>
+            </div>
+          ) : (
+            <>
+              <div className="border-b border-slate-200 pb-3">
+                <h3 className="text-lg font-black text-slate-900">Pasang & Publikasikan Proyek Baru</h3>
+                <p className="text-xs text-slate-500">
+                  Isi formulir di bawah ini. Proyek Anda akan diverifikasi oleh Admin sebelum dipublikasikan di katalog publik (Gratis 10 Hari Pertama).
+                </p>
+              </div>
+
+              <form onSubmit={handlePostProject} className="space-y-4 max-w-2xl text-xs">
             {/* Type selector */}
             <div className="space-y-1.5">
               <label className="font-bold text-slate-800 block">Jenis Proyek: <span className="text-red-500">*</span></label>
@@ -875,6 +987,8 @@ export default function DashboardMember({
               <span>{isSubmitting ? "Mempublikasikan..." : "Ajukan Proyek ke Admin Server"}</span>
             </button>
           </form>
+          </>
+          )}
         </div>
       )}
 
@@ -969,9 +1083,35 @@ export default function DashboardMember({
       {/* TAB CONTENT: PROFILE */}
       {activeSubTab === "PROFILE" && (
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-5 max-w-xl text-xs">
-          <div className="border-b border-slate-200 pb-3">
-            <h3 className="text-base font-black text-slate-900">Profil & Status Verifikasi NIK Member</h3>
-            <p className="text-slate-500 text-[11px]">Informasi identitas akun Anda di database server REJEKI MACAN.</p>
+          <div className="border-b border-slate-200 pb-3 flex items-center justify-between">
+            <div>
+              <h3 className="text-base font-black text-slate-900">Profil & Status Verifikasi NIK Member</h3>
+              <p className="text-slate-500 text-[11px]">Informasi identitas akun Anda di database server REJEKI MACAN.</p>
+            </div>
+            <span className={`px-2.5 py-1 rounded-full font-black text-[10px] uppercase flex items-center gap-1 ${
+              currentUser.kycStatus === "VERIFIED"
+                ? "bg-emerald-100 text-emerald-800 border border-emerald-300"
+                : currentUser.kycStatus === "PENDING"
+                ? "bg-amber-100 text-amber-900 border border-amber-300"
+                : "bg-red-100 text-red-800 border border-red-300"
+            }`}>
+              {currentUser.kycStatus === "VERIFIED" ? (
+                <>
+                  <CheckCircle2 size={12} className="text-emerald-600" />
+                  <span>✓ Verified Member</span>
+                </>
+              ) : currentUser.kycStatus === "PENDING" ? (
+                <>
+                  <Clock size={12} className="text-amber-700" />
+                  <span>⏳ KYC Pending Admin</span>
+                </>
+              ) : (
+                <>
+                  <ShieldAlert size={12} className="text-red-600" />
+                  <span>⚠️ KYC Belum Lengkap</span>
+                </>
+              )}
+            </span>
           </div>
 
           <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200 space-y-3">
@@ -1011,7 +1151,7 @@ export default function DashboardMember({
             </div>
             <div className="flex items-center justify-between border-b border-slate-200/60 pb-2">
               <span className="text-slate-500">Nomor NIK / KTP:</span>
-              <strong className="text-slate-900 font-mono">{currentUser.ktpNumber || "3171012345670001"}</strong>
+              <strong className="text-slate-900 font-mono">{currentUser.ktpNumber || "Belum diisi"}</strong>
             </div>
             <div className="flex items-center justify-between border-b border-slate-200/60 pb-2">
               <span className="text-slate-500">Peran Makelar:</span>
@@ -1020,23 +1160,97 @@ export default function DashboardMember({
               </strong>
             </div>
             <div className="flex items-center justify-between pt-1">
-              <span className="text-slate-500">Status Verifikasi KYC:</span>
-              <span className={`px-2.5 py-0.5 rounded-md font-black text-[10px] uppercase ${
-                currentUser.kycStatus === "VERIFIED"
-                  ? "bg-emerald-100 text-emerald-800 border border-emerald-300"
-                  : "bg-amber-100 text-amber-800 border border-amber-300"
+              <span className="text-slate-500">Hak Akses Pasang Proyek:</span>
+              <span className={`px-2 py-0.5 rounded font-bold text-[10px] ${
+                isKycVerified 
+                  ? "text-emerald-700 bg-emerald-50 border border-emerald-200" 
+                  : "text-red-700 bg-red-50 border border-red-200"
               }`}>
-                {currentUser.kycStatus === "VERIFIED" ? "✓ Verified Member" : "KYC Pending"}
+                {isKycVerified ? "✓ Diizinkan (Verified)" : "🔒 Terkunci (Perlu Verifikasi KYC)"}
               </span>
             </div>
           </div>
 
-          <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-2xl flex items-start gap-2.5">
-            <ShieldCheck size={20} className="text-amber-600 shrink-0 mt-0.5" />
-            <p className="text-amber-900 text-[11px] leading-relaxed">
-              Verifikasi NIK & KYC memberikan lencana <strong>✓ Verified Member</strong> pada setiap proyek dan pengajuan minat Anda, meningkatkan kepercayaan calon mediator & buyer A1 di platform REJEKI MACAN.
-            </p>
-          </div>
+          {/* Form / Box KYC Update if not yet verified */}
+          {!isKycVerified ? (
+            <div className="p-4 bg-amber-50 border border-amber-300 rounded-2xl space-y-4">
+              <div className="flex items-start gap-2.5">
+                <ShieldAlert size={20} className="text-amber-700 shrink-0 mt-0.5" />
+                <div>
+                  <h4 className="font-bold text-amber-950 text-xs">Lengkapi / Perbarui Data KYC</h4>
+                  <p className="text-[11px] text-amber-800 leading-relaxed">
+                    Kirimkan nomor NIK 16 digit dan foto KTP asli Anda untuk disetujui Admin agar fitur posting proyek dapat segera aktif.
+                  </p>
+                </div>
+              </div>
+
+              <div className="space-y-3 bg-white p-3.5 rounded-xl border border-amber-200">
+                <div className="space-y-1">
+                  <label className="text-[11px] font-bold text-slate-700 block">Nomor NIK KTP (16 Digit):</label>
+                  <input
+                    type="text"
+                    maxLength={16}
+                    placeholder="Contoh: 3171012345670001"
+                    value={kycNik}
+                    onChange={(e) => setKycNik(e.target.value.replace(/\D/g, ""))}
+                    className="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg text-xs font-mono font-bold text-slate-900 focus:outline-none focus:border-amber-500"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-bold text-slate-700 block">Foto KTP / Identitas Resmi:</label>
+                  {kycImg ? (
+                    <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between gap-2">
+                      <img
+                        src={kycImg}
+                        alt="KTP"
+                        className="w-16 h-11 object-cover rounded-lg border border-slate-300 shrink-0 shadow-2xs"
+                      />
+                      <span className="text-[11px] text-emerald-700 font-bold flex items-center gap-1">
+                        <CheckCircle2 size={13} /> Foto KTP Terlampir
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setKycImg("")}
+                        className="text-xs text-red-600 hover:text-red-800 font-bold px-2 py-1 bg-red-50 rounded-md border border-red-200 cursor-pointer"
+                      >
+                        Ganti Foto
+                      </button>
+                    </div>
+                  ) : (
+                    <label className="border-2 border-dashed border-slate-300 hover:border-amber-500 bg-slate-50 hover:bg-amber-50/50 transition-all rounded-xl p-3 flex flex-col items-center justify-center gap-1 cursor-pointer text-center">
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={handleKycFileUpload}
+                        className="hidden"
+                      />
+                      <Upload size={16} className="text-slate-400" />
+                      <span className="text-[11px] font-bold text-slate-700">Pilih Foto KTP dari Perangkat</span>
+                      <span className="text-[10px] text-slate-400">Format JPG / PNG (Maksimal 10MB)</span>
+                    </label>
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleSaveKYC}
+                  disabled={isSubmittingKyc}
+                  className="w-full py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black rounded-xl text-xs uppercase tracking-wider transition-all shadow-sm cursor-pointer flex items-center justify-center gap-2"
+                >
+                  <ShieldCheck size={15} />
+                  <span>{isSubmittingKyc ? "Mengirim ke Admin..." : "Kirim Berkas KYC ke Admin"}</span>
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="p-3.5 bg-emerald-50 border border-emerald-200 rounded-2xl flex items-start gap-2.5">
+              <ShieldCheck size={20} className="text-emerald-600 shrink-0 mt-0.5" />
+              <p className="text-emerald-900 text-[11px] leading-relaxed">
+                Akun Anda telah <strong>Terverifikasi KYC (Verified Member)</strong> oleh Admin. Anda memiliki akses penuh untuk mempublikasikan proyek penawaran (Supply) dan permintaan (Demand) di platform REJEKI MACAN.
+              </p>
+            </div>
+          )}
         </div>
       )}
 

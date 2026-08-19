@@ -505,6 +505,10 @@ export default function DashboardAdmin({ supplyListings, demandListings, onRefre
 
   useEffect(() => {
     loadData();
+    const interval = setInterval(() => {
+      loadData();
+    }, 5000);
+    return () => clearInterval(interval);
   }, []);
 
   const getRemainingDays = (expiresAtStr: string) => {
