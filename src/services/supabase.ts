@@ -1,4 +1,5 @@
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
+import { INITIAL_SEED_DATA } from "../data/initialData";
 
 const STORAGE_KEY_SUPABASE_CONFIG = "rejekimacan_supabase_config";
 
@@ -83,7 +84,12 @@ export async function fetchSupabaseDB(): Promise<any | null> {
     if (data && data.data) {
       return data.data;
     }
-    return null;
+
+    // If table exists but has no row yet (empty), automatically initialize with initial seed data!
+    console.log("Supabase app_state is empty. Initializing first row...");
+    const initData = JSON.parse(JSON.stringify(INITIAL_SEED_DATA));
+    await saveSupabaseDB(initData);
+    return initData;
   } catch (err) {
     console.error("Supabase direct fetch error:", err);
     return null;
