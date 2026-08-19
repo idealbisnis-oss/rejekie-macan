@@ -8,6 +8,7 @@ export interface SupabaseConfig {
 }
 
 const DEFAULT_SUPABASE_URL = "https://sucuzvnbqotbbmlnlfwh.supabase.co";
+const DEFAULT_SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN1Y3V6dm5icW90YmJtbG5sZndoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY5NTcxNDUsImV4cCI6MjEwMjUzMzE0NX0.7O8gqybWXt6s-I7bFsQYJBrWfC4GVMIcCx-cRKReiM";
 
 export function getSupabaseConfig(): SupabaseConfig {
   // 1. Check localStorage first (user configured in Admin Dashboard)
@@ -21,10 +22,10 @@ export function getSupabaseConfig(): SupabaseConfig {
     }
   } catch (e) {}
 
-  // 2. Check import.meta.env
+  // 2. Check import.meta.env, fallback to embedded default keys
   const meta = import.meta as any;
   const envUrl = meta?.env?.VITE_SUPABASE_URL || DEFAULT_SUPABASE_URL;
-  const envKey = meta?.env?.VITE_SUPABASE_ANON_KEY || "";
+  const envKey = meta?.env?.VITE_SUPABASE_ANON_KEY || DEFAULT_SUPABASE_ANON_KEY;
 
   return {
     supabaseUrl: envUrl,
@@ -112,5 +113,71 @@ export async function saveSupabaseDB(data: any): Promise<boolean> {
   } catch (err) {
     console.error("Supabase direct save error:", err);
     return false;
+  }
+}
+
+// Comprehensive diagnostic test for Supabase connection
+export async function testSupabaseConnectionDetails(): Promise<{
+  ok: boolean;
+  message: string;
+  code?: string;
+  details?: string;
+}> {
+  const config = getSupabaseConfig();
+  if (!config.supabaseUrl || !config.supabaseAnonKey) {
+    return {
+      ok: false,
+      message: "Supabase URL atau Anon Key masih kosong."
+    };
+  }
+
+  const client = getSupabaseClient();
+  if (!client) {
+    return {
+      ok: false,
+      message: "Format URL atau Anon Key tidak valid."
+    };
+  }
+
+  try {
+    const { data, error } = await client
+      .from("app_state")
+      .select("key")
+      .limit(1);
+
+    if (error) {
+      if (error.code === "42P01" || error.message?.includes("does not exist") || error.message?.includes("relation")) {
+        return {
+          ok: false,
+          code: error.code,
+          message: "Tabel 'app_state' belum ada di database Supabase Anda.",
+          details: "Jalankan script SQL pembuatan tabel di Supabase SQL Editor."
+        };
+      }
+      if (error.code === "42501" || error.message?.includes("row level security") || error.message?.includes("policy")) {
+        return {
+          ok: false,
+          code: error.code,
+          message: "Izin akses (RLS) memblokir tabel 'app_state'.",
+          details: "Jalankan policy SQL: create policy \"Allow all access\" on app_state for all using (true) with check (true);"
+        };
+      }
+      return {
+        ok: false,
+        code: error.code,
+        message: `Supabase Error: ${error.message}`,
+        details: error.details || error.hint || ""
+      };
+    }
+
+    return {
+      ok: true,
+      message: "Koneksi Supabase Cloud Berhasil 100%! Tabel 'app_state' aktif dan siap sinkron."
+    };
+  } catch (err: any) {
+    return {
+      ok: false,
+      message: `Gagal menghubungi server Supabase: ${err?.message || err}`
+    };
   }
 }
