@@ -303,6 +303,15 @@ export async function apiGetUsers() {
   if (remote && Array.isArray(remote.users)) {
     return remote;
   }
+  if (isSupabaseConfigured()) {
+    try {
+      const supaData = await fetchSupabaseDB();
+      if (supaData && Array.isArray(supaData.users)) {
+        try { localStorage.setItem(STORAGE_KEY_DB, JSON.stringify(supaData)); } catch(e) {}
+        return { success: true, users: supaData.users };
+      }
+    } catch (e) {}
+  }
   const db = getLocalDB();
   return { success: true, users: db.users };
 }
@@ -519,6 +528,15 @@ export async function apiDeleteProject(projectId: string) {
 export async function apiGetInterests() {
   const remote = await safeFetchJson("/api/interests");
   if (remote && Array.isArray(remote.interests)) return remote;
+  if (isSupabaseConfigured()) {
+    try {
+      const supaData = await fetchSupabaseDB();
+      if (supaData && Array.isArray(supaData.interests)) {
+        try { localStorage.setItem(STORAGE_KEY_DB, JSON.stringify(supaData)); } catch(e) {}
+        return { success: true, interests: supaData.interests };
+      }
+    } catch (e) {}
+  }
   const db = getLocalDB();
   return { success: true, interests: db.interests || [] };
 }
@@ -600,7 +618,17 @@ export async function apiGetDeposits(userId?: string) {
   const query = userId ? `?userId=${userId}` : "";
   const remote = await safeFetchJson(`/api/deposits${query}`);
   if (remote && Array.isArray(remote.deposits)) return remote;
-
+  if (isSupabaseConfigured()) {
+    try {
+      const supaData = await fetchSupabaseDB();
+      if (supaData && Array.isArray(supaData.deposits)) {
+        try { localStorage.setItem(STORAGE_KEY_DB, JSON.stringify(supaData)); } catch(e) {}
+        let deps = supaData.deposits || [];
+        if (userId) deps = deps.filter((d: any) => d.userId === userId);
+        return { success: true, deposits: deps };
+      }
+    } catch (e) {}
+  }
   const db = getLocalDB();
   let deps = db.deposits || [];
   if (userId) deps = deps.filter((d: any) => d.userId === userId);
