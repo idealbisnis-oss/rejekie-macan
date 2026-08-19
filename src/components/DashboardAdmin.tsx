@@ -1470,7 +1470,12 @@ export default function DashboardAdmin({ supplyListings, demandListings, onRefre
                   <button
                     type="button"
                     onClick={() => {
-                      const sql = `create table if not exists app_state (\n  key text primary key,\n  data jsonb not null,\n  updated_at timestamp with time zone default now()\n);\nalter table app_state enable row level security;\ncreate policy "Allow all access" on app_state for all using (true) with check (true);`;
+                      const sql = `create table if not exists app_state (
+  key text primary key,
+  data jsonb not null,
+  updated_at timestamp with time zone default now()
+);
+alter table app_state disable row level security;`;
                       navigator.clipboard.writeText(sql);
                       setCopiedSQL(true);
                       setTimeout(() => setCopiedSQL(false), 3000);
@@ -1486,8 +1491,7 @@ export default function DashboardAdmin({ supplyListings, demandListings, onRefre
   data jsonb not null,
   updated_at timestamp with time zone default now()
 );
-alter table app_state enable row level security;
-create policy "Allow all access" on app_state for all using (true) with check (true);`}
+alter table app_state disable row level security;`}
                 </pre>
               </div>
             </div>
