@@ -94,16 +94,27 @@ let supabaseSynced = false;
 
 // Initialize and sync Supabase on server startup/request
 async function checkAndSyncSupabase() {
-  if (supabaseSynced) return;
   try {
     const remoteData = await fetchRemoteDB(INITIAL_DATA);
-    if (remoteData) {
+    if (remoteData && Array.isArray(remoteData.users)) {
       inMemoryDB = remoteData;
       supabaseSynced = true;
     }
   } catch (e) {
     // Continue with local storage
   }
+}
+
+async function getDB() {
+  try {
+    const remoteData = await fetchRemoteDB(INITIAL_DATA);
+    if (remoteData && Array.isArray(remoteData.users) && remoteData.users.length > 0) {
+      inMemoryDB = remoteData;
+      supabaseSynced = true;
+      return remoteData;
+    }
+  } catch (e) {}
+  return readDB();
 }
 
 // Database helper functions
@@ -347,10 +358,10 @@ app.post("/api/admin/create-admin", (req, res) => {
 });
 
 // 2. Auth Endpoints
-app.post("/api/auth/login", (req, res) => {
+app.post("/api/auth/login", async (req, res) => {
   const { emailOrPhone, password } = req.body;
   const clean = (emailOrPhone || "").trim().toLowerCase();
-  const db = readDB();
+  const db = await getDB();
   const user = db.users.find((u: any) => {
     const matchEmail = u.email && u.email.toLowerCase() === clean;
     const matchUsername = u.username && u.username.toLowerCase() === clean;
@@ -368,9 +379,9 @@ app.post("/api/auth/login", (req, res) => {
 });
 
 // Get User Profile by ID (ensures live cross-device refresh)
-app.get("/api/users/:id", (req, res) => {
+app.get("/api/users/:id", async (req, res) => {
   const { id } = req.params;
-  const db = readDB();
+  const db = await getDB();
   const user = db.users.find((u: any) => u.id === id);
   if (!user) {
     return res.status(404).json({ success: false, message: "User tidak ditemukan." });
@@ -379,7 +390,7 @@ app.get("/api/users/:id", (req, res) => {
   res.json({ success: true, user: safeUser });
 });
 
-app.post("/api/auth/register", (req, res) => {
+app.post("/api/auth/register", async (req, res) => {
   const { fullName, username, email, phoneNumber, password, role, ktpNumber, ktpImageUrl, organization } = req.body;
 
   if (!fullName || !email || !phoneNumber || !password) {
@@ -394,7 +405,7 @@ app.post("/api/auth/register", (req, res) => {
     return res.status(400).json({ success: false, message: "Upload foto KTP / Identitas wajib dilampirkan untuk verifikasi." });
   }
 
-  const db = readDB();
+  const db = await getDB();
   const existing = db.users.find(
     (u: any) => u.email?.toLowerCase() === email?.toLowerCase() || u.phoneNumber === phoneNumber
   );
@@ -431,17 +442,17 @@ app.post("/api/auth/register", (req, res) => {
 });
 
 // 3. User Management (Admin & Self)
-app.get("/api/users", (req, res) => {
-  const db = readDB();
+app.get("/api/users", async (req, res) => {
+  const db = await getDB();
   const safeUsers = db.users.map(({ password, ...u }: any) => u);
   res.json({ success: true, users: safeUsers });
 });
 
-app.put("/api/users/:id/kyc", (req, res) => {
+app.put("/api/users/:id/kyc", async (req, res) => {
   const { id } = req.params;
   const { kycStatus, ktpNumber, ktpImageUrl, organization, fullName, username, phoneNumber, role } = req.body;
 
-  const db = readDB();
+  const db = await getDB();
   const userIndex = db.users.findIndex((u: any) => u.id === id);
 
   if (userIndex === -1) {
