@@ -9,7 +9,7 @@ export interface SupabaseConfig {
 }
 
 const DEFAULT_SUPABASE_URL = "https://sucuzvnbqotbbmlnlfwh.supabase.co";
-const DEFAULT_SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN1Y3V6dm5icW90YmJtbG5sZndoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY5NTcxNDUsImV4cCI6MjEwMjUzMzE0NX0.7O8gqybWXt6s-I7bFsQYJBrWfC4GVMIcCx-cRKReiM";
+const DEFAULT_SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN1Y3V6dm5icW90YmJtbG5sZndoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY5NTcxNDUsImV4cCI6MjEwMjUzMzE0NX0.7O8gqybWXt6s-I7bFsQYJBrWfC4GVMIcCx-cRKReiM8";
 
 export function getSupabaseConfig(): SupabaseConfig {
   // 1. Check localStorage first (user configured in Admin Dashboard)
@@ -18,6 +18,11 @@ export function getSupabaseConfig(): SupabaseConfig {
     if (saved) {
       const parsed = JSON.parse(saved);
       if (parsed.supabaseUrl && parsed.supabaseAnonKey) {
+        // Auto-fix truncated key if user saved old key ending with ReiM without 8
+        if (parsed.supabaseAnonKey.endsWith("ReiM")) {
+          parsed.supabaseAnonKey = parsed.supabaseAnonKey + "8";
+          localStorage.setItem(STORAGE_KEY_SUPABASE_CONFIG, JSON.stringify(parsed));
+        }
         return parsed;
       }
     }
