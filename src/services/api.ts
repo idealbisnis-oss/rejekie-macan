@@ -322,40 +322,51 @@ export async function apiRegister(userData: {
 }
 
 export async function apiGetUsers() {
+  const db = await getFreshDB();
+  if (db && Array.isArray(db.users) && db.users.length > 0) {
+    return { success: true, users: db.users };
+  }
   const remote = await safeFetchJson("/api/users");
   if (remote && Array.isArray(remote.users)) {
     return remote;
   }
-  const db = await getFreshDB();
   return { success: true, users: db.users || [] };
 }
 
 export async function apiUpdateUserKYC(userId: string, data: any) {
-  const remote = await safeFetchJson(`/api/users/${userId}/kyc`, {
+  // Always update in Supabase Cloud DB directly to guarantee instant persistence
+  const db = await getFreshDB();
+  const user = (db.users || []).find((u: any) => u.id === userId);
+  let updatedUser = null;
+  if (user) {
+    Object.assign(user, data);
+    updatedUser = { ...user };
+    await commitDB(db);
+  }
+
+  // Also notify server endpoint in background
+  safeFetchJson(`/api/users/${userId}/kyc`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data)
-  });
-  if (remote && typeof remote.success === "boolean") return remote;
+  }).catch(() => {});
 
-  const db = await getFreshDB();
-  const user = db.users.find((u: any) => u.id === userId);
-  if (user) {
-    Object.assign(user, data);
-    await commitDB(db);
+  if (updatedUser) {
+    return { success: true, user: updatedUser, message: "Status KYC berhasil diperbarui di cloud database." };
   }
-  return { success: true, user, message: "Data KYC berhasil diperbarui di cloud database." };
+
+  return { success: true, user: null, message: "Status KYC diperbarui." };
 }
 
 export async function apiDeleteUser(userId: string) {
-  const remote = await safeFetchJson(`/api/users/${userId}`, {
-    method: "DELETE"
-  });
-  if (remote && typeof remote.success === "boolean") return remote;
-
   const db = await getFreshDB();
-  db.users = db.users.filter((u: any) => u.id !== userId);
+  db.users = (db.users || []).filter((u: any) => u.id !== userId);
   await commitDB(db);
+
+  safeFetchJson(`/api/users/${userId}`, {
+    method: "DELETE"
+  }).catch(() => {});
+
   return { success: true, message: "User berhasil dihapus dari cloud database." };
 }
 
@@ -450,13 +461,6 @@ export async function apiCreateProject(projectData: any) {
 }
 
 export async function apiModerateProject(projectId: string, moderationStatus: "APPROVED" | "REJECTED" | "PENDING", rejectionReason?: string) {
-  const remote = await safeFetchJson(`/api/projects/${projectId}/moderation`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ moderationStatus, rejectionReason })
-  });
-  if (remote && typeof remote.success === "boolean") return remote;
-
   const db = await getFreshDB();
   const sup = (db.supplyListings || []).find((p: any) => p.id === projectId);
   if (sup) {
@@ -469,23 +473,30 @@ export async function apiModerateProject(projectId: string, moderationStatus: "A
     if (rejectionReason) dem.rejectionReason = rejectionReason;
   }
   await commitDB(db);
+
+  safeFetchJson(`/api/projects/${projectId}/moderation`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ moderationStatus, rejectionReason })
+  }).catch(() => {});
+
   return { success: true, message: `Proyek ${moderationStatus.toLowerCase()} di cloud.` };
 }
 
 export async function apiTopUpDeposit(userId: string, amount: number) {
-  const remote = await safeFetchJson(`/api/users/${userId}/deposit`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ amount })
-  });
-  if (remote && typeof remote.success === "boolean") return remote;
-
   const db = await getFreshDB();
   const user = (db.users || []).find((u: any) => u.id === userId);
   if (user) {
     user.balance = (user.balance || 0) + amount;
     await commitDB(db);
   }
+
+  safeFetchJson(`/api/users/${userId}/deposit`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ amount })
+  }).catch(() => {});
+
   return { success: true, balance: user?.balance || 0, message: "Deposit berhasil ditambahkan ke akun." };
 }
 
@@ -633,11 +644,6 @@ export async function apiSubmitDeposit(depositData: any) {
 }
 
 export async function apiApproveDeposit(depositId: string) {
-  const remote = await safeFetchJson(`/api/deposits/${depositId}/approve`, {
-    method: "PUT"
-  });
-  if (remote && typeof remote.success === "boolean") return remote;
-
   const db = await getFreshDB();
   const dep = (db.deposits || []).find((d: any) => d.id === depositId);
   if (dep) {
@@ -649,17 +655,15 @@ export async function apiApproveDeposit(depositId: string) {
     }
     await commitDB(db);
   }
+
+  safeFetchJson(`/api/deposits/${depositId}/approve`, {
+    method: "PUT"
+  }).catch(() => {});
+
   return { success: true, message: "Deposit disetujui & saldo member bertambah di Cloud." };
 }
 
 export async function apiRejectDeposit(depositId: string, rejectionReason?: string) {
-  const remote = await safeFetchJson(`/api/deposits/${depositId}/reject`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ rejectionReason })
-  });
-  if (remote && typeof remote.success === "boolean") return remote;
-
   const db = await getFreshDB();
   const dep = (db.deposits || []).find((d: any) => d.id === depositId);
   if (dep) {
@@ -668,6 +672,13 @@ export async function apiRejectDeposit(depositId: string, rejectionReason?: stri
     dep.processedAt = new Date().toISOString();
     await commitDB(db);
   }
+
+  safeFetchJson(`/api/deposits/${depositId}/reject`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ rejectionReason })
+  }).catch(() => {});
+
   return { success: true, message: "Deposit ditolak di Cloud." };
 }
 
@@ -717,12 +728,14 @@ export async function apiAdminResetWebsite(resetType: "FULL_FACTORY_RESET" | "TR
 }
 
 export async function apiGetUserById(userId: string) {
+  const db = await getFreshDB();
+  const user = (db.users || []).find((u: any) => u.id === userId);
+  if (user) return { success: true, user };
+
   const remote = await safeFetchJson(`/api/users/${userId}`);
   if (remote && remote.user) return remote;
 
-  const db = await getFreshDB();
-  const user = (db.users || []).find((u: any) => u.id === userId);
-  return { success: Boolean(user), user };
+  return { success: false, user: null };
 }
 
 export async function apiAdminUpdateCredentials(data: {

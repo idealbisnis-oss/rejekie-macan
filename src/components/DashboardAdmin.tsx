@@ -548,14 +548,29 @@ export default function DashboardAdmin({ supplyListings, demandListings, onRefre
     }
   };
 
+  const [updatingKycUserId, setUpdatingKycUserId] = useState<string | null>(null);
+
   // Handle KYC Update
-  const handleUpdateKYC = async (userId: string, status: string) => {
-    const res = await apiUpdateUserKYC(userId, { kycStatus: status });
-    if (res.success) {
-      showToast(`Status KYC member diubah menjadi: ${status}`);
-      loadData();
-    } else {
-      showToast("Gagal memperbarui status KYC.", "error");
+  const handleUpdateKYC = async (userId: string, status: string, memberName?: string) => {
+    setUpdatingKycUserId(userId);
+    // Optimistic UI update
+    setUsers(prev => prev.map(u => u.id === userId ? { ...u, kycStatus: status } : u));
+
+    try {
+      const res = await apiUpdateUserKYC(userId, { kycStatus: status });
+      if (res.success) {
+        showToast(`✓ Berhasil! Status KYC ${memberName || "Member"} diubah menjadi: ${status}`);
+        await loadData();
+        onRefreshData();
+      } else {
+        showToast(res.message || "Gagal memperbarui status KYC.", "error");
+        await loadData();
+      }
+    } catch (err) {
+      showToast("Terjadi kesalahan saat memperbarui status KYC.", "error");
+      await loadData();
+    } finally {
+      setUpdatingKycUserId(null);
     }
   };
 
@@ -1015,23 +1030,51 @@ export default function DashboardAdmin({ supplyListings, demandListings, onRefre
                       <td className="p-3 text-right space-x-1 whitespace-nowrap">
                         {u.role !== "ADMIN" && (
                           <>
-                            <button
-                              onClick={() => handleUpdateKYC(u.id, "VERIFIED")}
-                              className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded text-[10.5px] shadow-xs cursor-pointer"
-                            >
-                              Approve
-                            </button>
-                            <button
-                              onClick={() => handleUpdateKYC(u.id, "REJECTED")}
-                              className="px-2.5 py-1 bg-amber-600 hover:bg-amber-500 text-white font-bold rounded text-[10.5px] cursor-pointer"
-                            >
-                              Tolak
-                            </button>
+                            {u.kycStatus !== "VERIFIED" ? (
+                              <button
+                                onClick={() => handleUpdateKYC(u.id, "VERIFIED", u.fullName)}
+                                disabled={updatingKycUserId === u.id}
+                                className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-lg text-[11px] shadow-xs cursor-pointer inline-flex items-center gap-1 transition-all disabled:opacity-50"
+                              >
+                                {updatingKycUserId === u.id ? (
+                                  <>
+                                    <RefreshCw size={11} className="animate-spin" />
+                                    <span>Menyimpan...</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <CheckCircle2 size={12} />
+                                    <span>Approve</span>
+                                  </>
+                                )}
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => handleUpdateKYC(u.id, "PENDING", u.fullName)}
+                                disabled={updatingKycUserId === u.id}
+                                className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-lg text-[10px] cursor-pointer inline-flex items-center gap-1 transition-all disabled:opacity-50"
+                                title="Kembalikan status ke Pending"
+                              >
+                                {updatingKycUserId === u.id ? "..." : "Reset KYC"}
+                              </button>
+                            )}
+
+                            {u.kycStatus !== "REJECTED" && (
+                              <button
+                                onClick={() => handleUpdateKYC(u.id, "REJECTED", u.fullName)}
+                                disabled={updatingKycUserId === u.id}
+                                className="px-2.5 py-1 bg-amber-600 hover:bg-amber-500 text-white font-bold rounded-lg text-[10.5px] cursor-pointer inline-flex items-center gap-1 transition-all disabled:opacity-50"
+                              >
+                                <span>Tolak</span>
+                              </button>
+                            )}
+
                             <button
                               onClick={() => setDeleteUserTarget(u)}
-                              className="px-2 py-1 bg-red-100 hover:bg-red-200 text-red-700 font-bold rounded text-[10.5px] cursor-pointer ml-1"
+                              disabled={updatingKycUserId === u.id}
+                              className="px-2 py-1 bg-red-100 hover:bg-red-200 text-red-700 font-bold rounded-lg text-[10.5px] cursor-pointer ml-1 inline-flex items-center gap-1 transition-all disabled:opacity-50"
                             >
-                              Hapus
+                              <span>Hapus</span>
                             </button>
                           </>
                         )}
