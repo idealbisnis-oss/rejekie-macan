@@ -446,6 +446,9 @@ export async function apiCreateProject(projectData: any) {
     db.demandListings.unshift(newProject);
   }
   saveLocalDB(db);
+  if (isSupabaseConfigured()) {
+    await saveSupabaseDB(db);
+  }
 
   return {
     success: true,
@@ -474,6 +477,9 @@ export async function apiModerateProject(projectId: string, moderationStatus: "A
     if (rejectionReason) dem.rejectionReason = rejectionReason;
   }
   saveLocalDB(db);
+  if (isSupabaseConfigured()) {
+    await saveSupabaseDB(db);
+  }
   return { success: true, message: `Proyek ${moderationStatus.toLowerCase()}.` };
 }
 
@@ -490,6 +496,9 @@ export async function apiTopUpDeposit(userId: string, amount: number) {
   if (user) {
     user.balance = (user.balance || 0) + amount;
     saveLocalDB(db);
+    if (isSupabaseConfigured()) {
+      await saveSupabaseDB(db);
+    }
   }
   return { success: true, balance: user?.balance || 0, message: "Deposit berhasil ditambahkan." };
 }
@@ -508,6 +517,9 @@ export async function apiExtendProject(projectId: string, userId: string, days: 
     const curExp = item.expiresAt ? new Date(item.expiresAt).getTime() : Date.now();
     item.expiresAt = new Date(Math.max(Date.now(), curExp) + days * 24 * 3600 * 1000).toISOString();
     saveLocalDB(db);
+    if (isSupabaseConfigured()) {
+      await saveSupabaseDB(db);
+    }
   }
   return { success: true, message: `Durasi proyek diperpanjang ${days} hari.` };
 }
@@ -522,6 +534,9 @@ export async function apiDeleteProject(projectId: string) {
   db.supplyListings = (db.supplyListings || []).filter((s: any) => s.id !== projectId);
   db.demandListings = (db.demandListings || []).filter((d: any) => d.id !== projectId);
   saveLocalDB(db);
+  if (isSupabaseConfigured()) {
+    await saveSupabaseDB(db);
+  }
   return { success: true, message: "Proyek berhasil dihapus." };
 }
 
@@ -561,6 +576,9 @@ export async function apiSubmitInterest(projectId: string, interestData: any) {
   };
   db.interests.push(newInt);
   saveLocalDB(db);
+  if (isSupabaseConfigured()) {
+    await saveSupabaseDB(db);
+  }
   return { success: true, interest: newInt, message: "Minat berhasil dikirim ke Admin." };
 }
 
@@ -588,6 +606,9 @@ export async function apiUpdateInterest(
   if (int) {
     Object.assign(int, payload);
     saveLocalDB(db);
+    if (isSupabaseConfigured()) {
+      await saveSupabaseDB(db);
+    }
   }
   return { success: true, message: "Data minat diperbarui." };
 }
@@ -610,6 +631,9 @@ export async function apiSendInterestChatMessage(interestId: string, chatData: {
       sentAt: new Date().toISOString()
     });
     saveLocalDB(db);
+    if (isSupabaseConfigured()) {
+      await saveSupabaseDB(db);
+    }
   }
   return { success: true, message: "Pesan terkirim." };
 }
@@ -653,6 +677,9 @@ export async function apiSubmitDeposit(depositData: any) {
   };
   db.deposits.unshift(newDep);
   saveLocalDB(db);
+  if (isSupabaseConfigured()) {
+    await saveSupabaseDB(db);
+  }
   return { success: true, deposit: newDep, message: "Deposit berhasil diajukan." };
 }
 
@@ -672,6 +699,9 @@ export async function apiApproveDeposit(depositId: string) {
       user.balance = (user.balance || 0) + Number(dep.amount || 0);
     }
     saveLocalDB(db);
+    if (isSupabaseConfigured()) {
+      await saveSupabaseDB(db);
+    }
   }
   return { success: true, message: "Deposit disetujui & saldo member bertambah." };
 }
@@ -691,6 +721,9 @@ export async function apiRejectDeposit(depositId: string, rejectionReason?: stri
     dep.rejectionReason = rejectionReason;
     dep.processedAt = new Date().toISOString();
     saveLocalDB(db);
+    if (isSupabaseConfigured()) {
+      await saveSupabaseDB(db);
+    }
   }
   return { success: true, message: "Deposit ditolak." };
 }
