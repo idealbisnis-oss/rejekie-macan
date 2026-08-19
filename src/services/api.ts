@@ -757,19 +757,22 @@ export async function apiAdminResetWebsite(resetType: "FULL_FACTORY_RESET" | "TR
     return remote;
   }
 
-  const db = getLocalDB();
+  let db = getLocalDB();
   if (resetType === "FULL_FACTORY_RESET") {
-    saveLocalDB(INITIAL_SEED_DATA);
+    db = JSON.parse(JSON.stringify(INITIAL_SEED_DATA));
   } else if (resetType === "TRANSACTIONS_ONLY") {
     db.interests = [];
     db.deposits = [];
-    saveLocalDB(db);
   } else if (resetType === "LISTINGS_ONLY") {
     db.supplyListings = [];
     db.demandListings = [];
-    saveLocalDB(db);
   }
-  return { success: true, message: "Database berhasil direset sesuai opsi yang dipilih." };
+  
+  saveLocalDB(db);
+  if (isSupabaseConfigured()) {
+    await saveSupabaseDB(db);
+  }
+  return { success: true, message: "Database berhasil direset dan disinkronkan ke Cloud." };
 }
 
 export async function apiGetUserById(userId: string) {
@@ -816,6 +819,9 @@ export async function apiAdminUpdateCredentials(data: {
     if (data.phoneNumber) admin.phoneNumber = data.phoneNumber;
     if (data.newPassword) admin.password = data.newPassword;
     saveLocalDB(db);
+    if (isSupabaseConfigured()) {
+      await saveSupabaseDB(db);
+    }
   }
   return { success: true, user: admin, message: "Kredensial Admin berhasil diperbarui." };
 }
@@ -850,5 +856,8 @@ export async function apiAdminCreateAccount(data: {
   };
   db.users.push(newAdmin);
   saveLocalDB(db);
+  if (isSupabaseConfigured()) {
+    await saveSupabaseDB(db);
+  }
   return { success: true, newAdmin, message: "Admin baru berhasil dibuat." };
 }
