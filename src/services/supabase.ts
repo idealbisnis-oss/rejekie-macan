@@ -75,11 +75,18 @@ export async function fetchSupabaseDB(): Promise<any | null> {
   if (!client) return null;
 
   try {
-    const { data, error } = await client
+    const fetchPromise = client
       .from("app_state")
       .select("data")
       .eq("key", "main")
       .maybeSingle();
+
+    const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 3500));
+
+    const result: any = await Promise.race([fetchPromise, timeoutPromise]);
+    if (!result) return null;
+
+    const { data, error } = result;
 
     if (error) {
       console.warn("Supabase fetch warning:", error.message);
@@ -93,7 +100,7 @@ export async function fetchSupabaseDB(): Promise<any | null> {
     // If table exists but has no row yet (empty), automatically initialize with initial seed data!
     console.log("Supabase app_state is empty. Initializing first row...");
     const initData = JSON.parse(JSON.stringify(INITIAL_SEED_DATA));
-    await saveSupabaseDB(initData);
+    saveSupabaseDB(initData).catch(() => {});
     return initData;
   } catch (err) {
     console.error("Supabase direct fetch error:", err);
