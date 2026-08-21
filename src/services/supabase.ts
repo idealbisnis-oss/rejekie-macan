@@ -108,13 +108,13 @@ export async function fetchSupabaseDB(): Promise<any | null> {
   }
 }
 
-// Save app state directly to Supabase
+// Save app state directly to Supabase with safety timeout
 export async function saveSupabaseDB(data: any): Promise<boolean> {
   const client = getSupabaseClient();
   if (!client) return false;
 
   try {
-    const { error } = await client.from("app_state").upsert(
+    const upsertPromise = client.from("app_state").upsert(
       {
         key: "main",
         data: data,
@@ -123,8 +123,15 @@ export async function saveSupabaseDB(data: any): Promise<boolean> {
       { onConflict: "key" }
     );
 
-    if (error) {
-      console.warn("Supabase save warning:", error.message);
+    const timeoutPromise = new Promise<{ error: any }>((resolve) =>
+      setTimeout(() => resolve({ error: { message: "Supabase save timed out" } }), 3500)
+    );
+
+    const result: any = await Promise.race([upsertPromise, timeoutPromise]);
+    if (!result || result.error) {
+      if (result?.error) {
+        console.warn("Supabase save warning:", result.error.message);
+      }
       return false;
     }
     return true;

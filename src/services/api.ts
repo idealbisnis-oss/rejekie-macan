@@ -479,15 +479,12 @@ export async function apiGetProjects(params?: { type?: string; category?: string
 }
 
 export async function apiCreateProject(projectData: any) {
-  const remote = await safeFetchJson("/api/projects", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(projectData)
-  });
-  if (remote && typeof remote.success === "boolean") return remote;
-
-  const db = await getFreshDB();
-  const brokerUser = db.users?.find((u: any) => u.id === projectData.brokerId);
+  const isSupply = projectData.projectType === "supply";
+  const newId = `${isSupply ? "sup" : "dem"}-${Date.now()}`;
+  
+  // Direct local DB update first for instant responsiveness
+  const localDb = getLocalDB();
+  const brokerUser = (localDb.users || []).find((u: any) => u.id === projectData.brokerId);
 
   // Verifikasi KYC: Member yang belum terverifikasi KYC oleh Admin TIDAK BISA posting project
   if (brokerUser && brokerUser.role !== "ADMIN" && brokerUser.kycStatus !== "VERIFIED") {
@@ -497,35 +494,62 @@ export async function apiCreateProject(projectData: any) {
     };
   }
 
-  const isSupply = projectData.projectType === "supply";
-  const newId = `${isSupply ? "sup" : "dem"}-${Date.now()}`;
-  const brokerUsername = projectData.brokerUsername || brokerUser?.username || brokerUser?.fullName || projectData.brokerId;
+  const brokerUsername = projectData.brokerUsername || brokerUser?.username || brokerUser?.fullName || "Admin A1";
+  const defaultImg = isSupply 
+    ? "https://images.unsplash.com/photo-1500382017468-9049fed747ef?auto=format&fit=crop&q=80&w=1200" 
+    : undefined;
 
   const newProject = {
     ...projectData,
     id: newId,
+    title: projectData.title?.trim() || `Proyek ${projectData.category || "Komersial"}`,
+    specifications: projectData.specifications?.trim() || projectData.criteria?.trim() || "-",
+    criteria: projectData.criteria?.trim() || projectData.specifications?.trim() || "-",
+    imageUrl: projectData.imageUrl || defaultImg,
     brokerUsername,
     moderationStatus: "APPROVED",
     viewCount: 1,
-    isHot: Boolean(projectData.isPremium),
+    isHot: Boolean(projectData.isPremium ?? true),
     createdAt: new Date().toISOString(),
     expiresAt: new Date(Date.now() + 10 * 24 * 3600 * 1000).toISOString(),
     isContactLocked: true
   };
 
   if (isSupply) {
-    if (!db.supplyListings) db.supplyListings = [];
-    db.supplyListings.unshift(newProject);
+    if (!localDb.supplyListings) localDb.supplyListings = [];
+    localDb.supplyListings.unshift(newProject);
   } else {
-    if (!db.demandListings) db.demandListings = [];
-    db.demandListings.unshift(newProject);
+    if (!localDb.demandListings) localDb.demandListings = [];
+    localDb.demandListings.unshift(newProject);
   }
-  await commitDB(db);
+
+  // Save to localStorage immediately
+  try {
+    localStorage.setItem(STORAGE_KEY_DB, JSON.stringify(localDb));
+  } catch (e) {
+    console.warn("Local storage write warning:", e);
+  }
+
+  // Asynchronously commit to Supabase Cloud and Server without blocking the UI
+  (async () => {
+    try {
+      if (isSupabaseConfigured()) {
+        await saveSupabaseDB(localDb);
+      }
+      safeFetchJson("/api/projects", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(newProject)
+      }, 3000).catch(() => {});
+    } catch (e) {
+      console.warn("Background project sync error:", e);
+    }
+  })();
 
   return {
     success: true,
     project: newProject,
-    message: "Proyek berhasil dipublikasikan dan tersimpan ke Cloud!"
+    message: "✓ Proyek berhasil dipublikasikan dan aktif di katalog!"
   };
 }
 

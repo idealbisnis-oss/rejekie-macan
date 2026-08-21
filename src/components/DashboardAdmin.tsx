@@ -81,15 +81,10 @@ export default function DashboardAdmin({ supplyListings, demandListings, onRefre
   const [adminIsPremium, setAdminIsPremium] = useState<boolean>(true);
   const [isSubmittingAdminProject, setIsSubmittingAdminProject] = useState<boolean>(false);
 
-  // Handler Upload Foto Proyek Admin
+  // Handler Upload Foto Proyek Admin dengan Kompresi Otomatis
   const handleAdminImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
-    if (file.size > 10 * 1024 * 1024) {
-      showToast("Ukuran foto maksimal 10MB", "error");
-      return;
-    }
 
     const reader = new FileReader();
     reader.onload = (event) => {
@@ -98,7 +93,7 @@ export default function DashboardAdmin({ supplyListings, demandListings, onRefre
         const canvas = document.createElement("canvas");
         let width = img.width;
         let height = img.height;
-        const maxDim = 1200;
+        const maxDim = 800; // Optimal size for high speed and light database weight
         if (width > maxDim || height > maxDim) {
           if (width > height) {
             height = Math.round((height * maxDim) / width);
@@ -112,7 +107,7 @@ export default function DashboardAdmin({ supplyListings, demandListings, onRefre
         canvas.height = height;
         const ctx = canvas.getContext("2d");
         ctx?.drawImage(img, 0, 0, width, height);
-        const resizedDataUrl = canvas.toDataURL("image/jpeg", 0.82);
+        const resizedDataUrl = canvas.toDataURL("image/jpeg", 0.75);
         setAdminImageUrl(resizedDataUrl);
       };
       img.src = event.target?.result as string;
@@ -123,30 +118,40 @@ export default function DashboardAdmin({ supplyListings, demandListings, onRefre
   // Handler Submit Proyek Admin
   const handleAdminSubmitProject = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!adminTitle.trim() || !adminSpecifications.trim()) {
-      showToast("Harap isi judul dan deskripsi spesifikasi proyek!", "error");
-      return;
+    
+    // Auto-generate title if empty from category and description
+    let finalTitle = adminTitle.trim();
+    if (!finalTitle) {
+      if (adminSpecifications.trim()) {
+        finalTitle = `${adminCategory} - ${adminSpecifications.trim().slice(0, 45)}...`;
+      } else {
+        finalTitle = `${adminProjectType === "supply" ? "Penawaran" : "Kebutuhan"} ${adminCategory}`;
+      }
     }
+
+    const finalSpecs = adminSpecifications.trim() || finalTitle;
 
     setIsSubmittingAdminProject(true);
     try {
       const res = await apiCreateProject({
         projectType: adminProjectType,
-        title: adminTitle.trim(),
-        category: adminCategory,
-        location: adminLocation || "Indonesia",
-        specifications: adminSpecifications.trim(),
-        criteria: adminSpecifications.trim(),
+        title: finalTitle,
+        category: adminCategory || "Lahan / Tanah Komersial",
+        location: adminLocation.trim() || "Indonesia",
+        specifications: finalSpecs,
+        criteria: finalSpecs,
         price: adminPrice ? parseRupiahInput(adminPrice) : 0,
         budgetMin: adminBudgetMin ? parseRupiahInput(adminBudgetMin) : 0,
         budgetMax: adminBudgetMax ? parseRupiahInput(adminBudgetMax) : 0,
-        paymentSystem: adminPaymentSystem,
+        paymentSystem: adminPaymentSystem || "Cash Keras / Bertahap",
         brokerId: currentUser?.id || "admin-1",
         imageUrl: adminImageUrl || (adminProjectType === "supply" ? "https://images.unsplash.com/photo-1500382017468-9049fed747ef?auto=format&fit=crop&q=80&w=1200" : undefined),
         isPremium: adminIsPremium
       });
 
-      if (res.success) {
+      setIsSubmittingAdminProject(false);
+
+      if (res && res.success) {
         showToast(res.message || "✓ Proyek berhasil dipublikasikan sebagai Admin Terverifikasi (A1)!");
         setShowAdminPostModal(false);
         setAdminTitle("");
@@ -155,14 +160,14 @@ export default function DashboardAdmin({ supplyListings, demandListings, onRefre
         setAdminBudgetMin("");
         setAdminBudgetMax("");
         setAdminImageUrl("");
+        loadData();
         onRefreshData();
       } else {
-        showToast(res.message || "Gagal memposting proyek admin.", "error");
+        showToast((res && res.message) || "Gagal memposting proyek admin.", "error");
       }
-    } catch (err) {
-      showToast("Terjadi kesalahan saat memposting proyek.", "error");
-    } finally {
+    } catch (err: any) {
       setIsSubmittingAdminProject(false);
+      showToast("Terjadi kesalahan saat memposting proyek.", "error");
     }
   };
 
@@ -2608,7 +2613,7 @@ alter table app_state disable row level security;`}
               </button>
             </div>
 
-            <form onSubmit={handleAdminSubmitProject} className="space-y-4 text-xs">
+            <form onSubmit={handleAdminSubmitProject} noValidate className="space-y-4 text-xs">
               {/* Tipe Proyek: Supply vs Demand */}
               <div>
                 <label className="block font-bold text-slate-700 mb-1.5">Pilih Tipe Listing Proyek:</label>
@@ -2641,11 +2646,10 @@ alter table app_state disable row level security;`}
               {/* Judul Proyek */}
               <div className="space-y-1">
                 <label className="block font-bold text-slate-800">
-                  Judul Proyek / Ringkasan Listing <span className="text-red-500">*</span>:
+                  Judul Proyek / Ringkasan Listing <span className="text-amber-600">(Otomatis disesuaikan jika kosong)</span>:
                 </label>
                 <input
                   type="text"
-                  required
                   value={adminTitle}
                   onChange={(e) => setAdminTitle(e.target.value)}
                   placeholder={adminProjectType === "supply" ? "Contoh: Dijual Lahan Industri 10 Ha Karawang Timur Akses Kontainer" : "Contoh: Dicari Lahan Komersial Min. 3.000m² Pinggir Jalan Utama Surabaya"}
@@ -2672,7 +2676,6 @@ alter table app_state disable row level security;`}
                   <label className="block font-bold text-slate-800">Lokasi / Kota:</label>
                   <input
                     type="text"
-                    required
                     value={adminLocation}
                     onChange={(e) => setAdminLocation(e.target.value)}
                     placeholder="Contoh: Jakarta Barat, DKI Jakarta"
@@ -2727,11 +2730,10 @@ alter table app_state disable row level security;`}
               {/* Deskripsi & Spesifikasi */}
               <div className="space-y-1">
                 <label className="block font-bold text-slate-800">
-                  {adminProjectType === "supply" ? "Deskripsi & Spesifikasi Lahan / Properti" : "Kriteria & Syarat Kebutuhan Buyer"} <span className="text-red-500">*</span>:
+                  {adminProjectType === "supply" ? "Deskripsi & Spesifikasi Lahan / Properti" : "Kriteria & Syarat Kebutuhan Buyer"}:
                 </label>
                 <textarea
                   rows={3}
-                  required
                   value={adminSpecifications}
                   onChange={(e) => setAdminSpecifications(e.target.value)}
                   placeholder={adminProjectType === "supply" ? "Jelaskan luas tanah, legalitas SHM/HGB, lebar muka, zonasi tata ruang, kontur, akses jalan, dsb." : "Jelaskan kriteria lahan yang dicari investor, legalitas yang diminta, akses kontainer, radius lokasi, dll."}
@@ -2747,7 +2749,7 @@ alter table app_state disable row level security;`}
                     <button
                       type="button"
                       onClick={() => setAdminImageUrl("")}
-                      className="text-[11px] text-red-600 hover:underline cursor-pointer"
+                      className="text-[11px] text-red-600 hover:underline cursor-pointer font-bold"
                     >
                       Hapus Foto
                     </button>
@@ -2762,7 +2764,7 @@ alter table app_state disable row level security;`}
                   <div className="flex flex-col sm:flex-row items-center gap-2">
                     <label className="flex-1 w-full p-3 bg-white border border-dashed border-amber-400 hover:border-amber-500 rounded-xl flex items-center justify-center gap-2 cursor-pointer transition-colors text-amber-900 font-bold">
                       <Upload size={16} className="text-amber-600" />
-                      <span>Upload Foto dari Perangkat</span>
+                      <span>Upload Foto dari Perangkat (Auto-Compress)</span>
                       <input
                         type="file"
                         accept="image/*"
@@ -2776,7 +2778,7 @@ alter table app_state disable row level security;`}
                 <div className="space-y-1 pt-1">
                   <label className="text-[11px] text-slate-500">Atau masukkan Link URL Foto langsung:</label>
                   <input
-                    type="url"
+                    type="text"
                     value={adminImageUrl}
                     onChange={(e) => setAdminImageUrl(e.target.value)}
                     placeholder="https://images.unsplash.com/photo-..."
@@ -2870,6 +2872,32 @@ alter table app_state disable row level security;`}
                 {isExecutingReset ? "Mereset Website..." : "⚡ Eksekusi Reset Sekarang"}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Floating Global Toast Notification */}
+      {toast && (
+        <div className="fixed bottom-6 right-6 z-[99999] max-w-md animate-in slide-in-from-bottom-5 duration-200">
+          <div
+            className={`p-4 rounded-2xl shadow-2xl border flex items-center gap-3 ${
+              toast.type === "error"
+                ? "bg-red-950 text-red-100 border-red-800"
+                : "bg-slate-900 text-amber-300 border-amber-500/50"
+            }`}
+          >
+            <div
+              className={`w-3 h-3 rounded-full shrink-0 ${
+                toast.type === "error" ? "bg-red-500 animate-ping" : "bg-emerald-400 animate-pulse"
+              }`}
+            />
+            <p className="text-xs font-bold leading-relaxed">{toast.message}</p>
+            <button
+              onClick={() => setToast(null)}
+              className="ml-auto text-slate-400 hover:text-white p-1 cursor-pointer"
+            >
+              ✕
+            </button>
           </div>
         </div>
       )}
