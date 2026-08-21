@@ -219,7 +219,8 @@ export async function apiLogin(emailOrPhone: string, password: string): Promise<
   let user = (db.users || []).find((u: any) => 
     (u.email && u.email.toLowerCase().trim() === cleanInput) || 
     (cleanPhoneInput && u.phoneNumber && u.phoneNumber.replace(/\D/g, "") === cleanPhoneInput) ||
-    (u.username && u.username.toLowerCase().trim() === cleanInput)
+    (u.username && u.username.toLowerCase().trim() === cleanInput) ||
+    (u.fullName && u.fullName.toLowerCase().trim() === cleanInput)
   );
 
   // If not found in fresh local/supabase DB, also query the backend server
@@ -298,32 +299,46 @@ export async function apiRegister(userData: {
   const cleanEmail = finalEmail ? finalEmail.toLowerCase() : "";
   const cleanPhone = finalPhone ? finalPhone.replace(/\D/g, "") : "";
 
-  const existing = db.users.find(
+  const existingIdx = db.users.findIndex(
     (u: any) => (cleanEmail && u.email && u.email.toLowerCase().trim() === cleanEmail) || 
                 (cleanPhone && u.phoneNumber && u.phoneNumber.replace(/\D/g, "") === cleanPhone)
   );
 
-  if (existing) {
-    return { success: false, message: "Email atau Nomor WhatsApp sudah terdaftar di sistem!" };
+  let targetUser: any;
+  if (existingIdx >= 0) {
+    db.users[existingIdx] = {
+      ...db.users[existingIdx],
+      fullName: userData.fullName || db.users[existingIdx].fullName,
+      username: userData.username ? userData.username.trim() : (db.users[existingIdx].username || userData.fullName),
+      email: finalEmail || db.users[existingIdx].email,
+      phoneNumber: finalPhone || db.users[existingIdx].phoneNumber,
+      password: userData.password || db.users[existingIdx].password,
+      role: userData.role || db.users[existingIdx].role || "MAKELAR_BARANG",
+      kycStatus: userData.ktpNumber ? "PENDING" : (db.users[existingIdx].kycStatus || "UNVERIFIED"),
+      ktpNumber: userData.ktpNumber || db.users[existingIdx].ktpNumber,
+      ktpImageUrl: userData.ktpImageUrl || db.users[existingIdx].ktpImageUrl,
+      organization: userData.organization || db.users[existingIdx].organization || "Independent"
+    };
+    targetUser = db.users[existingIdx];
+  } else {
+    targetUser = {
+      id: `user-${Date.now()}`,
+      fullName: userData.fullName,
+      username: userData.username ? userData.username.trim() : userData.fullName,
+      email: finalEmail,
+      phoneNumber: finalPhone,
+      password: userData.password,
+      role: userData.role || "MAKELAR_BARANG",
+      kycStatus: userData.ktpNumber ? "PENDING" : "UNVERIFIED",
+      ktpNumber: userData.ktpNumber,
+      ktpImageUrl: userData.ktpImageUrl,
+      organization: userData.organization || "Independent",
+      registeredAt: new Date().toISOString(),
+      balance: 0
+    };
+    db.users.push(targetUser);
   }
 
-  const newUser = {
-    id: `user-${Date.now()}`,
-    fullName: userData.fullName,
-    username: userData.username ? userData.username.trim() : userData.fullName,
-    email: finalEmail,
-    phoneNumber: finalPhone,
-    password: userData.password,
-    role: userData.role || "MAKELAR_BARANG",
-    kycStatus: userData.ktpNumber ? "PENDING" : "UNVERIFIED",
-    ktpNumber: userData.ktpNumber,
-    ktpImageUrl: userData.ktpImageUrl,
-    organization: userData.organization || "Independent",
-    registeredAt: new Date().toISOString(),
-    balance: 0
-  };
-
-  db.users.push(newUser);
   await commitDB(db);
 
   // Background notify server API if running
@@ -337,7 +352,7 @@ export async function apiRegister(userData: {
     })
   }).catch(() => {});
 
-  const { password: _, ...safeUser } = newUser;
+  const { password: _, ...safeUser } = targetUser;
   return {
     success: true,
     user: safeUser as UserSession,

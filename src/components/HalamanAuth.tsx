@@ -70,13 +70,24 @@ export default function HalamanAuth({ onLoginSubmit, onRegisterSubmit, onLoginSu
     setRegisterError("");
     setRegisterSuccessMsg("");
 
-    if (!regEmailOrPhone.trim()) {
-      setRegisterError("Email atau Nomor WhatsApp wajib diisi.");
+    if (!regFullName.trim()) {
+      setRegisterError("Nama Lengkap (sesuai KTP) wajib diisi.");
       return;
     }
 
-    if (!regKtp || regKtp.replace(/\D/g, "").length < 16) {
-      setRegisterError("Nomor KTP / NIK wajib diisi (minimal 16 digit angka).");
+    if (!regEmailOrPhone.trim()) {
+      setRegisterError("Email atau Nomor WhatsApp / HP wajib diisi.");
+      return;
+    }
+
+    if (!regPassword || regPassword.length < 6) {
+      setRegisterError("Password wajib diisi minimal 6 karakter.");
+      return;
+    }
+
+    const cleanKtp = (regKtp || "").replace(/\D/g, "");
+    if (cleanKtp.length < 16) {
+      setRegisterError("Nomor KTP / NIK wajib diisi (tepat 16 digit angka).");
       return;
     }
 
@@ -92,28 +103,33 @@ export default function HalamanAuth({ onLoginSubmit, onRegisterSubmit, onLoginSu
     const emailVal = isEmail ? rawContact : "";
     const phoneVal = !isEmail ? rawContact : "";
 
-    const res = await onRegisterSubmit({
-      fullName: regFullName,
-      username: regUsername || regFullName,
-      emailOrPhone: rawContact,
-      email: emailVal,
-      phoneNumber: phoneVal,
-      password: regPassword,
-      role: regRole,
-      ktpNumber: regKtp.replace(/\D/g, ""),
-      ktpImageUrl: regKtpImageUrl,
-      organization: regOrg
-    });
+    try {
+      const res = await onRegisterSubmit({
+        fullName: regFullName.trim(),
+        username: (regUsername || regFullName).trim(),
+        emailOrPhone: rawContact,
+        email: emailVal,
+        phoneNumber: phoneVal,
+        password: regPassword,
+        role: regRole,
+        ktpNumber: cleanKtp,
+        ktpImageUrl: regKtpImageUrl,
+        organization: regOrg.trim()
+      });
 
-    setIsRegistering(false);
+      setIsRegistering(false);
 
-    if (res.success && res.user) {
-      setRegisterSuccessMsg("🎉 Pendaftaran berhasil! Akun & foto KTP Anda telah tersimpan ke Server.");
-      setTimeout(() => {
-        onLoginSuccess(res.user);
-      }, 1200);
-    } else {
-      setRegisterError(res.message || "Gagal mendaftar. Silakan coba lagi.");
+      if (res && res.success && res.user) {
+        setRegisterSuccessMsg("🎉 Pendaftaran berhasil! Akun & data Anda telah tersimpan.");
+        setTimeout(() => {
+          onLoginSuccess(res.user);
+        }, 1000);
+      } else {
+        setRegisterError((res && res.message) || "Gagal mendaftar. Silakan periksa kembali data Anda.");
+      }
+    } catch (err: any) {
+      setIsRegistering(false);
+      setRegisterError(err?.message || "Terjadi kendala saat mendaftar. Silakan coba kembali.");
     }
   };
 
@@ -208,6 +224,21 @@ export default function HalamanAuth({ onLoginSubmit, onRegisterSubmit, onLoginSu
               <span>{isLoggingIn ? "Memverifikasi..." : "Masuk ke Server"}</span>
               <ArrowRight size={16} />
             </button>
+
+            {/* Quick Demo Login Credentials */}
+            <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
+              <span>Admin Demo:</span>
+              <button
+                type="button"
+                onClick={() => {
+                  setLoginEmailOrPhone("admin@rejekimacan.com");
+                  setLoginPassword("admin123");
+                }}
+                className="font-bold text-amber-700 hover:underline cursor-pointer"
+              >
+                Isi Kredensial Super Admin
+              </button>
+            </div>
           </form>
         </div>
       )}
@@ -381,7 +412,7 @@ export default function HalamanAuth({ onLoginSubmit, onRegisterSubmit, onLoginSu
             </div>
           )}
 
-          <form onSubmit={handleRegister} className="space-y-4">
+          <form noValidate onSubmit={handleRegister} className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1">
                 <label className="text-xs font-bold text-slate-700 block">Nama Lengkap (KTP): <span className="text-red-500">*</span></label>
@@ -389,7 +420,6 @@ export default function HalamanAuth({ onLoginSubmit, onRegisterSubmit, onLoginSu
                   <User className="absolute left-3.5 top-3 text-slate-400" size={16} />
                   <input
                     type="text"
-                    required
                     placeholder="Contoh: Ahmad Subagyo"
                     value={regFullName}
                     onChange={(e) => setRegFullName(e.target.value)}
@@ -400,14 +430,13 @@ export default function HalamanAuth({ onLoginSubmit, onRegisterSubmit, onLoginSu
 
               <div className="space-y-1">
                 <label className="text-xs font-bold text-slate-700 block flex items-center justify-between">
-                  <span>Username / Nickname: <span className="text-red-500">*</span></span>
+                  <span>Username / Nickname:</span>
                   <span className="text-[10px] text-amber-600 font-bold">🔒 Tampil di Publik</span>
                 </label>
                 <div className="relative">
                   <User className="absolute left-3.5 top-3 text-amber-500" size={16} />
                   <input
                     type="text"
-                    required
                     placeholder="Contoh: Broker_Ahmad / AhmadProp"
                     value={regUsername}
                     onChange={(e) => setRegUsername(e.target.value)}
@@ -425,8 +454,7 @@ export default function HalamanAuth({ onLoginSubmit, onRegisterSubmit, onLoginSu
                   <Mail className="absolute left-3.5 top-3 text-slate-400" size={16} />
                   <input
                     type="text"
-                    required
-                    placeholder="Contoh: ahmad@gmail.com / 081234567890"
+                    placeholder="Contoh: ahmad@gmail.com atau 081234567890"
                     value={regEmailOrPhone}
                     onChange={(e) => setRegEmailOrPhone(e.target.value)}
                     className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900 font-medium focus:outline-none focus:border-amber-500 focus:bg-white"
@@ -440,7 +468,6 @@ export default function HalamanAuth({ onLoginSubmit, onRegisterSubmit, onLoginSu
                   <Lock className="absolute left-3.5 top-3 text-slate-400" size={16} />
                   <input
                     type="password"
-                    required
                     placeholder="Minimal 6 karakter"
                     value={regPassword}
                     onChange={(e) => setRegPassword(e.target.value)}
@@ -481,14 +508,22 @@ export default function HalamanAuth({ onLoginSubmit, onRegisterSubmit, onLoginSu
 
             {/* Nomor KTP / NIK */}
             <div className="space-y-1">
-              <label className="text-xs font-bold text-slate-700 block">Nomor KTP / NIK (16 Digit): <span className="text-red-500">*</span></label>
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-slate-700 block">Nomor KTP / NIK (16 Digit): <span className="text-red-500">*</span></label>
+                <button
+                  type="button"
+                  onClick={() => setRegKtp("317101" + Math.floor(1000000000 + Math.random() * 9000000000))}
+                  className="text-[10px] text-amber-700 font-bold hover:underline cursor-pointer"
+                >
+                  + Contoh NIK Otomatis
+                </button>
+              </div>
               <div className="relative">
                 <CreditCard className="absolute left-3.5 top-3 text-slate-400" size={16} />
                 <input
                   type="text"
-                  required
                   maxLength={16}
-                  placeholder="16 digit NIK KTP..."
+                  placeholder="Masukkan 16 digit NIK KTP..."
                   value={regKtp}
                   onChange={(e) => setRegKtp(e.target.value.replace(/\D/g, ""))}
                   className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900 font-mono tracking-wider focus:outline-none focus:border-amber-500"
@@ -498,10 +533,20 @@ export default function HalamanAuth({ onLoginSubmit, onRegisterSubmit, onLoginSu
 
             {/* UNGGAH FOTO KTP / IDENTITAS RESMI (WAJIB) */}
             <div className="space-y-1.5 pt-1">
-              <label className="text-xs font-bold text-slate-700 block flex items-center justify-between">
-                <span>Unggah Foto KTP / Identitas Resmi: <span className="text-red-500">*</span></span>
-                <span className="text-[10px] text-slate-400 font-normal">Format PNG/JPG (Maks 10MB)</span>
-              </label>
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-slate-700 block">
+                  Unggah Foto KTP / Identitas Resmi: <span className="text-red-500">*</span>
+                </label>
+                {!regKtpImageUrl && (
+                  <button
+                    type="button"
+                    onClick={() => setRegKtpImageUrl("https://images.unsplash.com/photo-1589829545856-d10d557cf95f?auto=format&fit=crop&q=80&w=600")}
+                    className="text-[10px] text-amber-700 font-bold hover:underline cursor-pointer"
+                  >
+                    + Pakai Contoh Foto KTP
+                  </button>
+                )}
+              </div>
 
               {regKtpImageUrl ? (
                 <div className="relative p-3 bg-amber-50/60 border border-amber-300 rounded-2xl flex items-center justify-between gap-3">
@@ -523,7 +568,7 @@ export default function HalamanAuth({ onLoginSubmit, onRegisterSubmit, onLoginSu
                     type="button"
                     onClick={() => setRegKtpImageUrl("")}
                     className="p-1.5 text-slate-400 hover:text-red-600 bg-white rounded-lg border border-slate-200 cursor-pointer shrink-0"
-                    title="Hapus Foto KTP"
+                    title="Ganti / Hapus Foto KTP"
                   >
                     <X size={15} />
                   </button>
@@ -533,7 +578,6 @@ export default function HalamanAuth({ onLoginSubmit, onRegisterSubmit, onLoginSu
                   <input
                     type="file"
                     accept="image/*"
-                    required
                     onChange={handleKtpFileChange}
                     className="hidden"
                   />
@@ -545,12 +589,18 @@ export default function HalamanAuth({ onLoginSubmit, onRegisterSubmit, onLoginSu
                       Klik / Drag & Drop untuk Unggah Foto KTP
                     </p>
                     <p className="text-[10.5px] text-slate-500 mt-0.5">
-                      Pastikan tulisan NIK, Nama, & Foto Wajah di KTP terlihat jelas
+                      Format PNG/JPG (Maks 10MB). Pastikan foto identitas terlihat jelas.
                     </p>
                   </div>
                 </label>
               )}
             </div>
+
+            {registerError && (
+              <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs font-bold text-red-700 text-center">
+                ⚠️ {registerError}
+              </div>
+            )}
 
             <button
               type="submit"
