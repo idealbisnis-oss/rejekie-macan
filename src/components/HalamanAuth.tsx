@@ -24,8 +24,7 @@ export default function HalamanAuth({ onLoginSubmit, onRegisterSubmit, onLoginSu
   // State Register
   const [regFullName, setRegFullName] = useState("");
   const [regUsername, setRegUsername] = useState("");
-  const [regEmail, setRegEmail] = useState("");
-  const [regPhone, setRegPhone] = useState("");
+  const [regEmailOrPhone, setRegEmailOrPhone] = useState("");
   const [regPassword, setRegPassword] = useState("");
   const [regRole, setRegRole] = useState<string>("MAKELAR_BARANG");
   const [regKtp, setRegKtp] = useState("");
@@ -71,6 +70,11 @@ export default function HalamanAuth({ onLoginSubmit, onRegisterSubmit, onLoginSu
     setRegisterError("");
     setRegisterSuccessMsg("");
 
+    if (!regEmailOrPhone.trim()) {
+      setRegisterError("Email atau Nomor WhatsApp wajib diisi.");
+      return;
+    }
+
     if (!regKtp || regKtp.replace(/\D/g, "").length < 16) {
       setRegisterError("Nomor KTP / NIK wajib diisi (minimal 16 digit angka).");
       return;
@@ -83,11 +87,17 @@ export default function HalamanAuth({ onLoginSubmit, onRegisterSubmit, onLoginSu
 
     setIsRegistering(true);
 
+    const rawContact = regEmailOrPhone.trim();
+    const isEmail = rawContact.includes("@");
+    const emailVal = isEmail ? rawContact : "";
+    const phoneVal = !isEmail ? rawContact : "";
+
     const res = await onRegisterSubmit({
       fullName: regFullName,
       username: regUsername || regFullName,
-      email: regEmail,
-      phoneNumber: regPhone,
+      emailOrPhone: rawContact,
+      email: emailVal,
+      phoneNumber: phoneVal,
       password: regPassword,
       role: regRole,
       ktpNumber: regKtp.replace(/\D/g, ""),
@@ -407,49 +417,21 @@ export default function HalamanAuth({ onLoginSubmit, onRegisterSubmit, onLoginSu
               </div>
             </div>
 
+            {/* Email / WhatsApp & Password */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1">
-                <label className="text-xs font-bold text-slate-700 block">Email: <span className="text-red-500">*</span></label>
+                <label className="text-xs font-bold text-slate-700 block">Email atau No. WhatsApp / HP: <span className="text-red-500">*</span></label>
                 <div className="relative">
                   <Mail className="absolute left-3.5 top-3 text-slate-400" size={16} />
                   <input
-                    type="email"
-                    required
-                    placeholder="ahmad@gmail.com"
-                    value={regEmail}
-                    onChange={(e) => setRegEmail(e.target.value)}
-                    className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900 font-medium focus:outline-none focus:border-amber-500 focus:bg-white"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-slate-700 block">No. WhatsApp / HP: <span className="text-red-500">*</span></label>
-                <div className="relative">
-                  <Phone className="absolute left-3.5 top-3 text-slate-400" size={16} />
-                  <input
                     type="text"
                     required
-                    placeholder="081234567890"
-                    value={regPhone}
-                    onChange={(e) => setRegPhone(e.target.value)}
+                    placeholder="Contoh: ahmad@gmail.com / 081234567890"
+                    value={regEmailOrPhone}
+                    onChange={(e) => setRegEmailOrPhone(e.target.value)}
                     className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900 font-medium focus:outline-none focus:border-amber-500 focus:bg-white"
                   />
                 </div>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-slate-700 block">Peran Utama Broker: <span className="text-red-500">*</span></label>
-                <select
-                  value={regRole}
-                  onChange={(e) => setRegRole(e.target.value)}
-                  className="w-full py-2.5 px-3 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900 font-semibold focus:outline-none focus:border-amber-500"
-                >
-                  <option value="MAKELAR_BARANG">Makelar / Broker Barang (Penjual)</option>
-                  <option value="MAKELAR_BUYER">Makelar / Broker Buyer (Pembeli)</option>
-                </select>
               </div>
 
               <div className="space-y-1">
@@ -468,21 +450,18 @@ export default function HalamanAuth({ onLoginSubmit, onRegisterSubmit, onLoginSu
               </div>
             </div>
 
+            {/* Peran Utama Broker & Nama Perusahaan */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1">
-                <label className="text-xs font-bold text-slate-700 block">Nomor KTP / NIK (16 Digit): <span className="text-red-500">*</span></label>
-                <div className="relative">
-                  <CreditCard className="absolute left-3.5 top-3 text-slate-400" size={16} />
-                  <input
-                    type="text"
-                    required
-                    maxLength={16}
-                    placeholder="16 digit NIK KTP..."
-                    value={regKtp}
-                    onChange={(e) => setRegKtp(e.target.value.replace(/\D/g, ""))}
-                    className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900 font-mono tracking-wider focus:outline-none focus:border-amber-500"
-                  />
-                </div>
+                <label className="text-xs font-bold text-slate-700 block">Peran Utama Broker: <span className="text-red-500">*</span></label>
+                <select
+                  value={regRole}
+                  onChange={(e) => setRegRole(e.target.value)}
+                  className="w-full py-2.5 px-3 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900 font-semibold focus:outline-none focus:border-amber-500"
+                >
+                  <option value="MAKELAR_BARANG">Makelar / Broker Barang (Penjual)</option>
+                  <option value="MAKELAR_BUYER">Makelar / Broker Buyer (Pembeli)</option>
+                </select>
               </div>
 
               <div className="space-y-1">
@@ -497,6 +476,23 @@ export default function HalamanAuth({ onLoginSubmit, onRegisterSubmit, onLoginSu
                     className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900 font-medium focus:outline-none focus:border-amber-500"
                   />
                 </div>
+              </div>
+            </div>
+
+            {/* Nomor KTP / NIK */}
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-slate-700 block">Nomor KTP / NIK (16 Digit): <span className="text-red-500">*</span></label>
+              <div className="relative">
+                <CreditCard className="absolute left-3.5 top-3 text-slate-400" size={16} />
+                <input
+                  type="text"
+                  required
+                  maxLength={16}
+                  placeholder="16 digit NIK KTP..."
+                  value={regKtp}
+                  onChange={(e) => setRegKtp(e.target.value.replace(/\D/g, ""))}
+                  className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900 font-mono tracking-wider focus:outline-none focus:border-amber-500"
+                />
               </div>
             </div>
 

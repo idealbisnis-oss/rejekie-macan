@@ -391,11 +391,17 @@ app.get("/api/users/:id", async (req, res) => {
 });
 
 app.post("/api/auth/register", async (req, res) => {
-  const { fullName, username, email, phoneNumber, password, role, ktpNumber, ktpImageUrl, organization } = req.body;
+  const { fullName, username, emailOrPhone, email, phoneNumber, password, role, ktpNumber, ktpImageUrl, organization } = req.body;
 
-  if (!fullName || !email || !phoneNumber || !password) {
-    return res.status(400).json({ success: false, message: "Harap isi semua kolom wajib (Nama, Email, HP, Password)." });
+  const rawContact = (emailOrPhone || email || phoneNumber || "").trim();
+
+  if (!fullName || !rawContact || !password) {
+    return res.status(400).json({ success: false, message: "Harap isi semua kolom wajib (Nama, Email atau No. WhatsApp/HP, Password)." });
   }
+
+  const isEmail = rawContact.includes("@");
+  const finalEmail = email?.trim() || (isEmail ? rawContact : "");
+  const finalPhone = phoneNumber?.trim() || (!isEmail ? rawContact : "");
 
   if (!ktpNumber || String(ktpNumber).trim().length < 16) {
     return res.status(400).json({ success: false, message: "Nomor KTP / NIK wajib diisi (minimal 16 digit)." });
@@ -406,21 +412,25 @@ app.post("/api/auth/register", async (req, res) => {
   }
 
   const db = await getDB();
+  const cleanEmail = finalEmail ? finalEmail.toLowerCase() : "";
+  const cleanPhone = finalPhone ? finalPhone.replace(/\D/g, "") : "";
+
   const existing = db.users.find(
-    (u: any) => u.email?.toLowerCase() === email?.toLowerCase() || u.phoneNumber === phoneNumber
+    (u: any) => (cleanEmail && u.email?.toLowerCase() === cleanEmail) || 
+                (cleanPhone && u.phoneNumber && u.phoneNumber.replace(/\D/g, "") === cleanPhone)
   );
 
   if (existing) {
-    return res.status(400).json({ success: false, message: "Email atau Nomor HP sudah terdaftar." });
+    return res.status(400).json({ success: false, message: "Email atau Nomor HP ini sudah terdaftar." });
   }
 
   const newUser = {
     id: `user-${Date.now()}`,
     fullName,
     username: username ? String(username).trim() : fullName,
-    email,
+    email: finalEmail,
     password,
-    phoneNumber,
+    phoneNumber: finalPhone,
     role: role || "MAKELAR_BARANG",
     kycStatus: "PENDING",
     ktpNumber: String(ktpNumber).trim(),

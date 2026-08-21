@@ -277,8 +277,9 @@ export async function apiLogin(emailOrPhone: string, password: string): Promise<
 export async function apiRegister(userData: {
   fullName: string;
   username?: string;
-  email: string;
-  phoneNumber: string;
+  emailOrPhone?: string;
+  email?: string;
+  phoneNumber?: string;
   password: string;
   role?: string;
   ktpNumber?: string;
@@ -288,8 +289,14 @@ export async function apiRegister(userData: {
   const db = await getFreshDB();
   if (!db.users) db.users = [];
 
-  const cleanEmail = userData.email?.toLowerCase().trim();
-  const cleanPhone = userData.phoneNumber?.replace(/\D/g, "");
+  const rawContact = (userData.emailOrPhone || userData.email || userData.phoneNumber || "").trim();
+  const isEmail = rawContact.includes("@");
+  
+  const finalEmail = userData.email?.trim() || (isEmail ? rawContact : "");
+  const finalPhone = userData.phoneNumber?.trim() || (!isEmail ? rawContact : "");
+
+  const cleanEmail = finalEmail ? finalEmail.toLowerCase() : "";
+  const cleanPhone = finalPhone ? finalPhone.replace(/\D/g, "") : "";
 
   const existing = db.users.find(
     (u: any) => (cleanEmail && u.email && u.email.toLowerCase().trim() === cleanEmail) || 
@@ -304,8 +311,8 @@ export async function apiRegister(userData: {
     id: `user-${Date.now()}`,
     fullName: userData.fullName,
     username: userData.username ? userData.username.trim() : userData.fullName,
-    email: userData.email.trim(),
-    phoneNumber: userData.phoneNumber.trim(),
+    email: finalEmail,
+    phoneNumber: finalPhone,
     password: userData.password,
     role: userData.role || "MAKELAR_BARANG",
     kycStatus: userData.ktpNumber ? "PENDING" : "UNVERIFIED",
@@ -323,7 +330,11 @@ export async function apiRegister(userData: {
   safeFetchJson("/api/auth/register", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(userData)
+    body: JSON.stringify({
+      ...userData,
+      email: finalEmail,
+      phoneNumber: finalPhone
+    })
   }).catch(() => {});
 
   const { password: _, ...safeUser } = newUser;
